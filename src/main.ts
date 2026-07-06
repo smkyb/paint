@@ -62,8 +62,10 @@ app.innerHTML = `
       </div>
 
       <div class="tool-group color-picker-group">
-        <div class="color-preview" id="color-preview"></div>
-        <input type="color" id="color-input" value="#000000" />
+        <div class="color-picker-wrapper">
+          <div class="color-preview" id="color-preview"></div>
+          <input type="color" id="color-input" value="#000000" />
+        </div>
 
         <div class="oklch-inputs">
           <div class="oklch-row">
@@ -308,6 +310,38 @@ function reorderLayers(fromIndex: number, toIndex: number) {
   compositeAndDisplay();
 }
 
+const oklchColorCache: { [key: number]: string } = {};
+function getMaxChromaColor(h: number): string {
+  if (oklchColorCache[h] !== undefined) {
+    return oklchColorCache[h];
+  }
+  let maxC = 0;
+  let bestL = 0.7;
+  for (let l = 0.2; l <= 0.9; l += 0.05) {
+    let low = 0;
+    let high = 0.4;
+    let fitC = 0;
+    for (let step = 0; step < 10; step++) {
+      const mid = (low + high) / 2;
+      const col = new Color('oklch', [l, mid, h]);
+      if (col.inGamut('srgb')) {
+        fitC = mid;
+        low = mid;
+      } else {
+        high = mid;
+      }
+    }
+    if (fitC > maxC) {
+      maxC = fitC;
+      bestL = l;
+    }
+  }
+  const finalCol = new Color('oklch', [bestL, maxC, h]);
+  const hex = finalCol.to('srgb').toString({ format: 'hex' });
+  oklchColorCache[h] = hex;
+  return hex;
+}
+
 function renderLayerList() {
   layerListEl.innerHTML = '';
   for (let i = layers.length - 1; i >= 0; i--) {
@@ -325,9 +359,13 @@ function renderLayerList() {
       compositeAndDisplay();
     });
 
-    const nameEl = document.createElement('span');
-    nameEl.className = 'layer-name';
-    nameEl.textContent = layer.name;
+    const colorCircle = document.createElement('span');
+    colorCircle.className = 'layer-color-circle';
+    const H = (layer.id % 8) * 45;
+    colorCircle.style.backgroundColor = getMaxChromaColor(H);
+
+    const spacer = document.createElement('div');
+    spacer.style.flex = '1';
 
     const moveUp = document.createElement('span');
     moveUp.className = 'layer-move icon-btn sm';
@@ -364,7 +402,8 @@ function renderLayerList() {
     });
 
     item.appendChild(vis);
-    item.appendChild(nameEl);
+    item.appendChild(colorCircle);
+    item.appendChild(spacer);
     item.appendChild(moveUp);
     item.appendChild(moveDown);
     item.appendChild(del);
@@ -671,7 +710,6 @@ function updateColorDisplay(c: Color) {
   oklchH.value = (typeof h === 'number' && !isNaN(h)) ? h.toFixed(1) : "0";
 }
 
-colorPreview.addEventListener('click', () => colorInput.click());
 colorInput.addEventListener('input', (e) => {
   updateColorDisplay(new Color((e.target as HTMLInputElement).value));
 });
