@@ -1005,3 +1005,23 @@ function init() {
 }
 
 init();
+
+// ===================================================================
+// Disable iOS Safari page zoom (viewport zoom) & double-tap zoom
+// ===================================================================
+document.addEventListener('gesturestart', (e) => e.preventDefault());
+document.addEventListener('gesturechange', (e) => e.preventDefault());
+
+let lastTouchEnd = 0;
+document.addEventListener('touchend', (e) => {
+  const now = performance.now();
+  if (now - lastTouchEnd <= 300) {
+    const target = e.target as HTMLElement;
+    // Don't prevent default on UI controls (buttons, inputs) to keep fast-clicks working
+    if (target && !['BUTTON', 'INPUT', 'SELECT', 'LABEL'].includes(target.tagName) && !target.closest('.layer-item')) {
+      e.preventDefault();
+    }
+  }
+  lastTouchEnd = now;
+}, { passive: false });
+
