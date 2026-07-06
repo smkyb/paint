@@ -1,5 +1,7 @@
 import './style.css';
 import Color from 'colorjs.io';
+import { getStorageUsage, getSavedCanvasesMetadata, generateNewCanvasId, saveCanvas, loadCanvas } from './storage';
+import type { SaveData, LayerData } from './storage';
 
 // ===================================================================
 // HTML
@@ -7,75 +9,108 @@ import Color from 'colorjs.io';
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
 app.innerHTML = `
-  <div id="canvas-container">
-    <div id="canvas-wrapper">
-      <canvas id="display-canvas"></canvas>
+  <div id="start-screen" class="start-screen">
+    <div class="start-content">
+      <h1>Paint</h1>
+      <button id="btn-new-canvas" class="start-button">
+        <i data-lucide="plus"></i> 新規作成
+      </button>
+      <div id="storage-info" class="storage-info"></div>
+      <div id="saved-canvases-list" class="saved-canvases-list"></div>
     </div>
   </div>
 
-  <div class="settings-panel">
-    <div class="settings-row">
-      <label>Canvas W:</label>
-      <input type="number" id="canvas-w" value="1024" />
-    </div>
-    <div class="settings-row">
-      <label>Canvas H:</label>
-      <input type="number" id="canvas-h" value="768" />
-    </div>
-    <div class="settings-row">
-      <button id="btn-resize">Resize</button>
-      <button id="btn-reset-view">Reset View</button>
-    </div>
-  </div>
-
-  <div class="layer-panel">
-    <div class="layer-panel-header">
-      <span>Layers</span>
-      <button id="btn-add-layer" title="Add layer">+</button>
-    </div>
-    <div class="layer-list" id="layer-list"></div>
-  </div>
-
-  <div class="toolbar">
-    <div class="tool-group">
-      <button id="btn-pen" class="active">Pen</button>
-      <button id="btn-eraser">Eraser</button>
+  <div id="paint-app" class="paint-app" style="display: none;">
+    <div id="canvas-container">
+      <div id="canvas-wrapper">
+        <canvas id="display-canvas"></canvas>
+      </div>
     </div>
 
-    <div class="tool-group slider-group">
-      <label>Size: <span id="size-val">5</span>px</label>
-      <input type="range" id="size-slider" min="1" max="100" value="5" />
+    <div class="settings-panel panel-card">
+      <div class="settings-row">
+        <label>Canvas W</label>
+        <input type="number" id="canvas-w" value="1024" />
+      </div>
+      <div class="settings-row">
+        <label>Canvas H</label>
+        <input type="number" id="canvas-h" value="768" />
+      </div>
+      <div class="settings-row button-row">
+        <button id="btn-resize" title="Resize" class="icon-btn"><i data-lucide="crop"></i></button>
+        <button id="btn-reset-view" title="Reset View" class="icon-btn"><i data-lucide="maximize"></i></button>
+      </div>
     </div>
 
-    <div class="tool-group color-picker-group">
-      <div class="color-preview" id="color-preview"></div>
-      <input type="color" id="color-input" value="#000000" />
+    <div class="layer-panel panel-card">
+      <div class="layer-panel-header">
+        <span>Layers</span>
+        <button id="btn-add-layer" title="Add layer" class="icon-btn sm"><i data-lucide="plus"></i></button>
+      </div>
+      <div class="layer-list" id="layer-list"></div>
+    </div>
 
-      <div class="oklch-inputs">
-        <div class="oklch-row">
-          <label>L</label> <input type="number" id="oklch-l" step="0.01" min="0" max="1" />
+    <div class="toolbar panel-card">
+      <div class="tool-group">
+        <button id="btn-pen" class="active icon-btn" title="Pen"><i data-lucide="pen-tool"></i></button>
+        <button id="btn-eraser" class="icon-btn" title="Eraser"><i data-lucide="eraser"></i></button>
+      </div>
+
+      <div class="tool-group slider-group">
+        <label>Size: <span id="size-val">5</span>px</label>
+        <input type="range" id="size-slider" min="0" max="100" value="35" />
+      </div>
+
+      <div class="tool-group color-picker-group">
+        <div class="color-preview" id="color-preview"></div>
+        <input type="color" id="color-input" value="#000000" />
+
+        <div class="oklch-inputs">
+          <div class="oklch-row">
+            <label>L</label> <input type="number" id="oklch-l" step="0.01" min="0" max="1" />
+          </div>
+          <div class="oklch-row">
+            <label>C</label> <input type="number" id="oklch-c" step="0.01" min="0" max="0.4" />
+          </div>
+          <div class="oklch-row">
+            <label>H</label> <input type="number" id="oklch-h" step="1" min="0" max="360" />
+          </div>
         </div>
-        <div class="oklch-row">
-          <label>C</label> <input type="number" id="oklch-c" step="0.01" min="0" max="0.4" />
-        </div>
-        <div class="oklch-row">
-          <label>H</label> <input type="number" id="oklch-h" step="1" min="0" max="360" />
+      </div>
+
+      <div class="tool-group slider-group">
+        <label>Stabilize: <span id="stab-val">30</span></label>
+        <input type="range" id="stab-slider" min="0" max="100" value="30" />
+      </div>
+
+      <div class="tool-group" style="position: relative;">
+        <button id="btn-settings" class="icon-btn" title="Settings"><i data-lucide="settings"></i></button>
+        <div id="settings-dropdown" class="settings-dropdown panel-card">
+          <button id="btn-save" class="start-button" style="height: 36px; padding: 0 12px; width: 100%; white-space: nowrap;">
+            <i data-lucide="save"></i> 保存
+          </button>
         </div>
       </div>
     </div>
 
-    <div class="tool-group slider-group">
-      <label>Stabilize: <span id="stab-val">30</span></label>
-      <input type="range" id="stab-slider" min="0" max="100" value="30" />
-    </div>
+    <div class="undo-toast" id="undo-toast"></div>
   </div>
-
-  <div class="undo-toast" id="undo-toast"></div>
 `;
+
+// Initialize standard icons
+if ((window as any).lucide) {
+  (window as any).lucide.createIcons();
+}
 
 // ===================================================================
 // DOM Elements
 // ===================================================================
+const startScreen = document.getElementById('start-screen') as HTMLDivElement;
+const paintApp = document.getElementById('paint-app') as HTMLDivElement;
+const btnNewCanvas = document.getElementById('btn-new-canvas') as HTMLButtonElement;
+const storageInfoEl = document.getElementById('storage-info') as HTMLDivElement;
+const savedCanvasesListEl = document.getElementById('saved-canvases-list') as HTMLDivElement;
+
 const displayCanvas = document.getElementById('display-canvas') as HTMLCanvasElement;
 const canvasWrapper = document.getElementById('canvas-wrapper') as HTMLDivElement;
 const container = document.getElementById('canvas-container') as HTMLDivElement;
@@ -83,6 +118,9 @@ const displayCtx = displayCanvas.getContext('2d')!;
 
 const btnPen = document.getElementById('btn-pen') as HTMLButtonElement;
 const btnEraser = document.getElementById('btn-eraser') as HTMLButtonElement;
+const btnSettings = document.getElementById('btn-settings') as HTMLButtonElement;
+const settingsDropdown = document.getElementById('settings-dropdown') as HTMLDivElement;
+const btnSave = document.getElementById('btn-save') as HTMLButtonElement;
 const sizeSlider = document.getElementById('size-slider') as HTMLInputElement;
 const sizeValEl = document.getElementById('size-val') as HTMLSpanElement;
 
@@ -120,6 +158,8 @@ interface Layer {
 let currentTool: 'pen' | 'eraser' = 'pen';
 let currentSize = 5;
 let currentColor = '#000000';
+
+let currentCanvasId: string | null = null;
 
 // StrokeSmoother parameters
 const positionSmoothing = 0.07;
@@ -256,8 +296,8 @@ function renderLayerList() {
     item.className = 'layer-item' + (layer.id === activeLayerId ? ' selected' : '');
 
     const vis = document.createElement('span');
-    vis.className = 'layer-visibility';
-    vis.textContent = layer.visible ? '👁' : '−';
+    vis.className = 'layer-visibility icon-btn sm';
+    vis.innerHTML = layer.visible ? '<i data-lucide="eye"></i>' : '<i data-lucide="eye-off"></i>';
     vis.addEventListener('click', (e) => {
       e.stopPropagation();
       layer.visible = !layer.visible;
@@ -270,8 +310,8 @@ function renderLayerList() {
     nameEl.textContent = layer.name;
 
     const del = document.createElement('span');
-    del.className = 'layer-delete';
-    del.textContent = '✕';
+    del.className = 'layer-delete icon-btn sm';
+    del.innerHTML = '<i data-lucide="trash-2"></i>';
     del.addEventListener('click', (e) => {
       e.stopPropagation();
       deleteLayer(layer.id);
@@ -287,6 +327,12 @@ function renderLayerList() {
     });
 
     layerListEl.appendChild(item);
+  }
+  
+  if ((window as any).lucide) {
+    (window as any).lucide.createIcons({
+      root: layerListEl
+    });
   }
 }
 
@@ -587,8 +633,52 @@ btnEraser.addEventListener('click', () => {
   btnPen.classList.remove('active');
 });
 
+btnSettings.addEventListener('click', (e) => {
+  e.stopPropagation();
+  settingsDropdown.classList.toggle('show');
+});
+
+document.addEventListener('click', (e) => {
+  if (!settingsDropdown.contains(e.target as Node) && e.target !== btnSettings) {
+    settingsDropdown.classList.remove('show');
+  }
+});
+
+btnSave.addEventListener('click', () => {
+  if (!currentCanvasId) {
+    currentCanvasId = generateNewCanvasId();
+  }
+  
+  const layerData: LayerData[] = layers.map(l => ({
+    id: l.id,
+    name: l.name,
+    visible: l.visible,
+    data: l.canvas.toDataURL('image/png')
+  }));
+  
+  const saveData: SaveData = {
+    version: 1,
+    id: currentCanvasId,
+    name: '無題のキャンバス',
+    updatedAt: new Date().toISOString(),
+    canvas: { w: canvasLogicalW, h: canvasLogicalH },
+    activeLayerId,
+    nextLayerId,
+    layers: layerData
+  };
+  
+  if (saveCanvas(saveData)) {
+    showToast('Saved successfully');
+    renderStartScreen(); // Update list in background
+  } else {
+    showToast('Failed to save (Storage full)');
+  }
+});
+
 sizeSlider.addEventListener('input', (e) => {
-  currentSize = parseInt((e.target as HTMLInputElement).value, 10);
+  const sliderVal = parseFloat((e.target as HTMLInputElement).value);
+  const size = Math.pow(10, sliderVal / 50);
+  currentSize = Math.max(1, Math.round(size));
   sizeValEl.innerText = currentSize.toString();
 });
 
@@ -965,12 +1055,17 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ===================================================================
-// Init
+// Init & Storage
 // ===================================================================
-function init() {
+function initNewCanvas() {
+  currentCanvasId = null;
   initCanvasSize(1024, 768);
+  layers.forEach(l => l.canvas.remove());
+  layers.length = 0;
+  nextLayerId = 0;
+  activeLayerId = -1;
+
   addLayerInternal('Background');
-  // Fill background layer white
   const bg = getActiveLayer()!;
   bg.ctx.fillStyle = '#ffffff';
   bg.ctx.fillRect(0, 0, canvasLogicalW, canvasLogicalH);
@@ -984,7 +1079,109 @@ function init() {
   updateViewTransform();
 }
 
-init();
+function loadSavedCanvas(id: string) {
+  const data = loadCanvas(id);
+  if (!data) {
+    alert('キャンバスの読み込みに失敗しました');
+    return;
+  }
+  
+  currentCanvasId = data.id;
+  startScreen.style.display = 'none';
+  paintApp.style.display = 'flex';
+  
+  initCanvasSize(data.canvas.w, data.canvas.h);
+  
+  layers.forEach(l => l.canvas.remove());
+  layers.length = 0;
+  nextLayerId = data.nextLayerId;
+  activeLayerId = data.activeLayerId;
+  
+  let loadedCount = 0;
+  data.layers.forEach(ld => {
+    const { canvas, ctx } = createLayerCanvas();
+    const l: Layer = {
+      id: ld.id,
+      name: ld.name,
+      visible: ld.visible,
+      canvas,
+      ctx
+    };
+    layers.push(l);
+    
+    const img = new Image();
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0);
+      loadedCount++;
+      if (loadedCount === data.layers.length) {
+        renderLayerList();
+        compositeAndDisplay();
+      }
+    };
+    img.src = ld.data;
+  });
+  
+  if (data.layers.length === 0) {
+    renderLayerList();
+    compositeAndDisplay();
+  }
+  
+  updateColorDisplay(new Color('#000000'));
+  viewOffsetX = (container.clientWidth - canvasLogicalW) / 2;
+  viewOffsetY = (container.clientHeight - canvasLogicalH) / 2;
+  updateViewTransform();
+}
+
+function renderStartScreen() {
+  const usage = getStorageUsage();
+  storageInfoEl.innerHTML = `
+    <span>Storage Usage: ${(usage.usedKB / 1024).toFixed(2)}MB / ${(usage.maxKB / 1024).toFixed(2)}MB (${usage.percentage}%)</span>
+    <div class="storage-bar"><div class="storage-bar-fill" style="width: ${usage.percentage}%"></div></div>
+  `;
+
+  const saves = getSavedCanvasesMetadata();
+  if (saves.length === 0) {
+    savedCanvasesListEl.innerHTML = '<p style="text-align: center; color: var(--muted-foreground); font-size: 14px; margin-top: 24px;">保存されたキャンバスはありません</p>';
+  } else {
+    let html = '<h3>Saved Canvases</h3>';
+    saves.forEach(save => {
+      const date = new Date(save.updatedAt).toLocaleString();
+      html += `
+        <div class="canvas-item" data-id="${save.id}">
+          <div class="canvas-item-info">
+            <span class="canvas-item-name">${save.name}</span>
+            <span class="canvas-item-date">${date}</span>
+          </div>
+          <i data-lucide="chevron-right" style="width:16px; height:16px; color: var(--muted-foreground);"></i>
+        </div>
+      `;
+    });
+    savedCanvasesListEl.innerHTML = html;
+
+    const items = savedCanvasesListEl.querySelectorAll('.canvas-item');
+    items.forEach(item => {
+      item.addEventListener('click', () => {
+        const id = item.getAttribute('data-id');
+        if (id) {
+          loadSavedCanvas(id);
+        }
+      });
+    });
+  }
+  
+  if ((window as any).lucide) {
+    (window as any).lucide.createIcons();
+  }
+}
+
+btnNewCanvas.addEventListener('click', () => {
+  startScreen.style.display = 'none';
+  paintApp.style.display = 'flex';
+  initNewCanvas();
+});
+
+// Initial render
+renderStartScreen();
 
 // ===================================================================
 // Disable iOS Safari page zoom (viewport zoom) & double-tap zoom
