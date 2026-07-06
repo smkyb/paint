@@ -1111,7 +1111,7 @@ function loadSavedCanvas(id: string) {
     
     const img = new Image();
     img.onload = () => {
-      ctx.drawImage(img, 0, 0);
+      ctx.drawImage(img, 0, 0, canvasLogicalW, canvasLogicalH);
       loadedCount++;
       if (loadedCount === data.layers.length) {
         renderLayerList();
