@@ -80,7 +80,7 @@ app.innerHTML = `
 
       <div class="tool-group slider-group">
         <label>Stabilize: <span id="stab-val">30</span></label>
-        <input type="range" id="stab-slider" min="0" max="100" value="30" />
+        <input type="range" id="stab-slider" min="0" max="100" value="56" />
       </div>
 
       <div class="tool-group" style="position: relative;">
@@ -759,7 +759,8 @@ sizeSlider.addEventListener('input', (e) => {
 });
 
 stabSlider.addEventListener('input', (e) => {
-  lazyRadius = parseInt((e.target as HTMLInputElement).value, 10);
+  const sliderVal = parseFloat((e.target as HTMLInputElement).value);
+  lazyRadius = Math.round(12.5 * (Math.pow(3, sliderVal / 50) - 1));
   stabValEl.innerText = lazyRadius.toString();
 });
 
