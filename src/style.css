@@ -36,6 +36,14 @@ body, html {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   color: var(--foreground);
   touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input, textarea {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 #app {
@@ -370,6 +378,14 @@ input[type="color"] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.layer-item .layer-move {
+  color: var(--muted-foreground);
+}
+
+.layer-item .layer-move:hover {
+  color: var(--foreground);
 }
 
 .layer-item .layer-delete {

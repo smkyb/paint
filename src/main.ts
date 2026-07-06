@@ -288,6 +288,26 @@ function getActiveLayer(): Layer | undefined {
   return layers.find(l => l.id === activeLayerId);
 }
 
+function reorderLayers(fromIndex: number, toIndex: number) {
+  if (fromIndex < 0 || fromIndex >= layers.length || toIndex < 0 || toIndex >= layers.length) return;
+  const prevOrder = layers.map(l => l.id);
+  
+  const temp = layers[fromIndex];
+  layers[fromIndex] = layers[toIndex];
+  layers[toIndex] = temp;
+  
+  const nextOrder = layers.map(l => l.id);
+  
+  pushUndo({
+    type: 'reorderLayers',
+    layersOrder: nextOrder,
+    prevLayersOrder: prevOrder
+  });
+  
+  renderLayerList();
+  compositeAndDisplay();
+}
+
 function renderLayerList() {
   layerListEl.innerHTML = '';
   for (let i = layers.length - 1; i >= 0; i--) {
@@ -309,6 +329,32 @@ function renderLayerList() {
     nameEl.className = 'layer-name';
     nameEl.textContent = layer.name;
 
+    const moveUp = document.createElement('span');
+    moveUp.className = 'layer-move icon-btn sm';
+    moveUp.innerHTML = '<i data-lucide="chevron-up"></i>';
+    if (i < layers.length - 1) {
+      moveUp.addEventListener('click', (e) => {
+        e.stopPropagation();
+        reorderLayers(i, i + 1);
+      });
+    } else {
+      moveUp.style.opacity = '0.2';
+      moveUp.style.pointerEvents = 'none';
+    }
+
+    const moveDown = document.createElement('span');
+    moveDown.className = 'layer-move icon-btn sm';
+    moveDown.innerHTML = '<i data-lucide="chevron-down"></i>';
+    if (i > 0) {
+      moveDown.addEventListener('click', (e) => {
+        e.stopPropagation();
+        reorderLayers(i, i - 1);
+      });
+    } else {
+      moveDown.style.opacity = '0.2';
+      moveDown.style.pointerEvents = 'none';
+    }
+
     const del = document.createElement('span');
     del.className = 'layer-delete icon-btn sm';
     del.innerHTML = '<i data-lucide="trash-2"></i>';
@@ -319,6 +365,8 @@ function renderLayerList() {
 
     item.appendChild(vis);
     item.appendChild(nameEl);
+    item.appendChild(moveUp);
+    item.appendChild(moveDown);
     item.appendChild(del);
 
     item.addEventListener('click', () => {
@@ -368,7 +416,13 @@ interface DeleteLayerUndoEntry {
   prevActiveLayerId: number;
 }
 
-type UndoEntry = StrokeUndoEntry | AddLayerUndoEntry | DeleteLayerUndoEntry;
+interface ReorderLayersUndoEntry {
+  type: 'reorderLayers';
+  layersOrder: number[];
+  prevLayersOrder: number[];
+}
+
+type UndoEntry = StrokeUndoEntry | AddLayerUndoEntry | DeleteLayerUndoEntry | ReorderLayersUndoEntry;
 
 const undoStack: UndoEntry[] = [];
 const redoStack: UndoEntry[] = [];
@@ -454,6 +508,17 @@ function performUndo() {
       renderLayerList();
       break;
     }
+    case 'reorderLayers': {
+      const order = entry.prevLayersOrder;
+      layers.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+      redoStack.push({
+        type: 'reorderLayers',
+        layersOrder: entry.prevLayersOrder,
+        prevLayersOrder: entry.layersOrder
+      });
+      renderLayerList();
+      break;
+    }
   }
 
   compositeAndDisplay();
@@ -505,8 +570,8 @@ function performRedo() {
       // Redo deleting a layer = remove it again
       const layer = layers.find(l => l.id === entry.layerId);
       const imageData = layer
-        ? layer.ctx.getImageData(0, 0, layer.canvas.width, layer.canvas.height)
-        : entry.imageData;
+         ? layer.ctx.getImageData(0, 0, layer.canvas.width, layer.canvas.height)
+         : entry.imageData;
       const index = layers.findIndex(l => l.id === entry.layerId);
       if (index !== -1) layers.splice(index, 1);
       const prevActive = activeLayerId;
@@ -520,6 +585,17 @@ function performRedo() {
         layerName: entry.layerName,
         imageData,
         prevActiveLayerId: prevActive,
+      });
+      renderLayerList();
+      break;
+    }
+    case 'reorderLayers': {
+      const order = entry.layersOrder;
+      layers.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+      undoStack.push({
+        type: 'reorderLayers',
+        layersOrder: entry.prevLayersOrder,
+        prevLayersOrder: entry.layersOrder
       });
       renderLayerList();
       break;
@@ -1217,4 +1293,9 @@ document.addEventListener('touchend', (e) => {
   }
   lastTouchEnd = now;
 }, { passive: false });
+
+// Disable right-click / long-press context menu globally
+document.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+});
 
