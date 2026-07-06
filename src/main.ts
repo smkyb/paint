@@ -700,9 +700,9 @@ function smootherTick() {
   const elapsed = performance.now() - lastInputTime;
   let currentSmoothing = positionSmoothing;
   if (elapsed > 40) {
-    // Ramp up smoothing factor from positionSmoothing (0.07) to 0.25 over 200ms
+    // Ramp up smoothing factor from positionSmoothing (0.07) to 0.35 over 200ms
     const t = Math.min(1, (elapsed - 40) / 200);
-    currentSmoothing = positionSmoothing + (0.25 - positionSmoothing) * t;
+    currentSmoothing = positionSmoothing + (0.35 - positionSmoothing) * t;
   }
 
   anchorPoint.x += (lastInputPoint.x - anchorPoint.x) * currentSmoothing;
@@ -731,25 +731,6 @@ function tick() {
   requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);
-
-function smootherFinishStroke() {
-  if (!anchorPoint || !lastInputPoint) return;
-
-  const dx = lastInputPoint.x - anchorPoint.x;
-  const dy = lastInputPoint.y - anchorPoint.y;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  if (dist === 0) return;
-
-  const limit = 20;
-  const moveDist = Math.min(dist, limit);
-  const ratio = moveDist / dist;
-
-  const finalPoint: Point = {
-    x: anchorPoint.x + dx * ratio,
-    y: anchorPoint.y + dy * ratio,
-  };
-  drawSegment(lastRenderPos!, finalPoint);
-}
 
 // ===================================================================
 // Tap Detection (2-finger undo, 3-finger redo)
@@ -864,7 +845,6 @@ function handlePointerUp(e: PointerEvent) {
       drawingPointerId = null;
       tapRecords = []; // Clear any residual touch taps
       if (isDrawing) {
-        smootherFinishStroke();
         isDrawing = false;
         smootherReset();
       }
