@@ -134,7 +134,8 @@ let canvasLogicalW = 1024;
 let canvasLogicalH = 768;
 
 let isDrawing = false;
-const activePointers: Map<number, PointerEvent> = new Map();
+const activeTouchPointers: Map<number, PointerEvent> = new Map();
+let drawingPointerId: number | null = null;
 
 // StrokeSmoother state
 let anchorPoint: Point | null = null;
@@ -754,6 +755,7 @@ function smootherFinishStroke() {
 // Tap Detection (2-finger undo, 3-finger redo)
 // ===================================================================
 function addTapRecord(e: PointerEvent) {
+  if (drawingPointerId !== null) return;
   tapRecords.push({
     pointerId: e.pointerId,
     startTime: performance.now(),
@@ -794,68 +796,78 @@ function checkTapOnAllUp(): number | null {
 // Pointer Events
 // ===================================================================
 container.addEventListener('pointerdown', (e) => {
-  activePointers.set(e.pointerId, e);
-  addTapRecord(e);
+  if (e.pointerType === 'touch') {
+    activeTouchPointers.set(e.pointerId, e);
+    addTapRecord(e);
 
-  if (activePointers.size === 1) {
-    container.setPointerCapture(e.pointerId);
-    // Save undo state before drawing
-    const layer = getActiveLayer();
-    if (layer) saveUndoState(layer.id);
-    isDrawing = true;
-    smootherReset();
-    smootherProcessPoint(getCanvasPoint(e.clientX, e.clientY));
-  } else if (activePointers.size >= 2) {
-    // Cancel drawing, switch to gesture
-    if (isDrawing) {
-      // Revert the stroke we just started — restore from undo
-      const entry = undoStack.pop(); // the state we just saved
-      if (entry && entry.type === 'stroke') {
-        const layer = layers.find(l => l.id === entry.layerId);
-        if (layer) {
-          layer.ctx.putImageData(entry.imageData, 0, 0);
-          compositeAndDisplay();
-        }
+    // Gestures (Pan/Zoom) only if not drawing
+    if (drawingPointerId === null) {
+      if (activeTouchPointers.size === 2) {
+        initGesture();
       }
-      isDrawing = false;
-      smootherReset();
     }
-    if (activePointers.size === 2) {
-      initGesture();
+  } else if (e.pointerType === 'pen' || e.pointerType === 'mouse') {
+    if (drawingPointerId === null) {
+      drawingPointerId = e.pointerId;
+      container.setPointerCapture(e.pointerId);
+
+      // Cancel any ongoing tap detection from touch
+      tapRecords = [];
+
+      // Save undo state before drawing
+      const layer = getActiveLayer();
+      if (layer) saveUndoState(layer.id);
+      isDrawing = true;
+      smootherReset();
+      smootherProcessPoint(getCanvasPoint(e.clientX, e.clientY));
     }
   }
 });
 
 container.addEventListener('pointermove', (e) => {
-  if (activePointers.has(e.pointerId)) {
-    activePointers.set(e.pointerId, e);
-  }
-  updateTapRecord(e);
+  if (e.pointerType === 'touch') {
+    if (activeTouchPointers.has(e.pointerId)) {
+      activeTouchPointers.set(e.pointerId, e);
+    }
+    updateTapRecord(e);
 
-  if (activePointers.size === 1 && isDrawing) {
-    smootherProcessPoint(getCanvasPoint(e.clientX, e.clientY));
-  } else if (activePointers.size >= 2) {
-    handleGesture();
+    // Gestures (Pan/Zoom) only if not drawing
+    if (drawingPointerId === null) {
+      if (activeTouchPointers.size >= 2) {
+        handleGesture();
+      }
+    }
+  } else if (e.pointerType === 'pen' || e.pointerType === 'mouse') {
+    if (drawingPointerId === e.pointerId && isDrawing) {
+      smootherProcessPoint(getCanvasPoint(e.clientX, e.clientY));
+    }
   }
 });
 
 function handlePointerUp(e: PointerEvent) {
-  activePointers.delete(e.pointerId);
-  try { container.releasePointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+  if (e.pointerType === 'touch') {
+    activeTouchPointers.delete(e.pointerId);
+    try { container.releasePointerCapture(e.pointerId); } catch (_) { /* ignore */ }
 
-  if (activePointers.size === 0) {
-    if (isDrawing) {
-      smootherFinishStroke();
-      isDrawing = false;
-      smootherReset();
+    // Multi-finger tap triggers only if we are not drawing
+    if (drawingPointerId === null && activeTouchPointers.size === 0) {
+      const fingerCount = checkTapOnAllUp();
+      if (fingerCount === 2) {
+        performUndo();
+      } else if (fingerCount !== null && fingerCount >= 3) {
+        performRedo();
+      }
     }
-
-    // Check for multi-finger tap
-    const fingerCount = checkTapOnAllUp();
-    if (fingerCount === 2) {
-      performUndo();
-    } else if (fingerCount !== null && fingerCount >= 3) {
-      performRedo();
+  } else if (e.pointerType === 'pen' || e.pointerType === 'mouse') {
+    if (drawingPointerId === e.pointerId) {
+      try { container.releasePointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+      drawingPointerId = null;
+      tapRecords = []; // Clear any residual touch taps
+      if (isDrawing) {
+        smootherFinishStroke();
+        isDrawing = false;
+        smootherReset();
+      }
     }
   }
 }
@@ -867,7 +879,7 @@ container.addEventListener('pointercancel', handlePointerUp);
 // Gestures (Pan / Zoom)
 // ===================================================================
 function getPointers() {
-  return Array.from(activePointers.values());
+  return Array.from(activeTouchPointers.values());
 }
 
 function initGesture() {
