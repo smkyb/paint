@@ -1,6 +1,6 @@
 import './style.css';
 import Color from 'colorjs.io';
-import { getStorageUsage, getSavedCanvasesMetadata, generateNewCanvasId, saveCanvas, loadCanvas } from './storage';
+import { getStorageUsage, getSavedCanvasesMetadata, generateNewCanvasId, saveCanvas, loadCanvas, clearAllCanvases } from './storage';
 import type { SaveData, LayerData } from './storage';
 
 // ===================================================================
@@ -1135,9 +1135,25 @@ function loadSavedCanvas(id: string) {
 function renderStartScreen() {
   const usage = getStorageUsage();
   storageInfoEl.innerHTML = `
-    <span>Storage Usage: ${(usage.usedKB / 1024).toFixed(2)}MB / ${(usage.maxKB / 1024).toFixed(2)}MB (${usage.percentage}%)</span>
+    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+      <span>Storage Usage: ${(usage.usedKB / 1024).toFixed(2)}MB / ${(usage.maxKB / 1024).toFixed(2)}MB (${usage.percentage}%)</span>
+      <button id="btn-clear-storage" class="icon-btn" style="color: var(--destructive); cursor: pointer; background: transparent; border: none; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: var(--radius); font-size: 11px;" title="Clear Storage">
+        <i data-lucide="trash-2" style="width:14px; height:14px;"></i> Clear All
+      </button>
+    </div>
     <div class="storage-bar"><div class="storage-bar-fill" style="width: ${usage.percentage}%"></div></div>
   `;
+
+  const btnClearStorage = document.getElementById('btn-clear-storage');
+  if (btnClearStorage) {
+    btnClearStorage.addEventListener('click', () => {
+      const confirmClear = confirm("本当にすべてのキャンバスデータを削除しますか？\nこの操作は取り消せません。");
+      if (confirmClear) {
+        clearAllCanvases();
+        renderStartScreen();
+      }
+    });
+  }
 
   const saves = getSavedCanvasesMetadata();
   if (saves.length === 0) {
