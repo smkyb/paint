@@ -140,6 +140,7 @@ const activePointers: Map<number, PointerEvent> = new Map();
 let anchorPoint: Point | null = null;
 let lastInputPoint: Point | null = null;
 let lastRenderPos: Point | null = null;
+let lastInputTime = 0;
 
 // Gesture state
 let initialPinchDistance: number | null = null;
@@ -678,9 +679,11 @@ function smootherReset() {
   anchorPoint = null;
   lastInputPoint = null;
   lastRenderPos = null;
+  lastInputTime = 0;
 }
 
 function smootherProcessPoint(p: Point) {
+  lastInputTime = performance.now();
   if (!anchorPoint) {
     anchorPoint = { x: p.x, y: p.y };
     lastInputPoint = { x: p.x, y: p.y };
@@ -693,8 +696,16 @@ function smootherProcessPoint(p: Point) {
 function smootherTick() {
   if (!isDrawing || !anchorPoint || !lastInputPoint || !lastRenderPos) return;
 
-  anchorPoint.x += (lastInputPoint.x - anchorPoint.x) * positionSmoothing;
-  anchorPoint.y += (lastInputPoint.y - anchorPoint.y) * positionSmoothing;
+  const elapsed = performance.now() - lastInputTime;
+  let currentSmoothing = positionSmoothing;
+  if (elapsed > 40) {
+    // Ramp up smoothing factor from positionSmoothing (0.07) to 0.8 over 200ms
+    const t = Math.min(1, (elapsed - 40) / 200);
+    currentSmoothing = positionSmoothing + (0.8 - positionSmoothing) * t;
+  }
+
+  anchorPoint.x += (lastInputPoint.x - anchorPoint.x) * currentSmoothing;
+  anchorPoint.y += (lastInputPoint.y - anchorPoint.y) * currentSmoothing;
 
   const adx = lastInputPoint.x - anchorPoint.x;
   const ady = lastInputPoint.y - anchorPoint.y;
