@@ -23,6 +23,10 @@ app.innerHTML = `
       <input type="number" id="canvas-h" value="768" />
     </div>
     <div class="settings-row">
+      <label>Catch-up Max: <span id="catchup-val">0.80</span></label>
+      <input type="range" id="catchup-slider" min="0.07" max="1.00" step="0.01" value="0.80" style="width: 80px;" />
+    </div>
+    <div class="settings-row">
       <button id="btn-resize">Resize</button>
       <button id="btn-reset-view">Reset View</button>
     </div>
@@ -100,6 +104,9 @@ const canvasHInput = document.getElementById('canvas-h') as HTMLInputElement;
 const btnResize = document.getElementById('btn-resize') as HTMLButtonElement;
 const btnResetView = document.getElementById('btn-reset-view') as HTMLButtonElement;
 
+const catchupSlider = document.getElementById('catchup-slider') as HTMLInputElement;
+const catchupValEl = document.getElementById('catchup-val') as HTMLSpanElement;
+
 const btnAddLayer = document.getElementById('btn-add-layer') as HTMLButtonElement;
 const layerListEl = document.getElementById('layer-list') as HTMLDivElement;
 const undoToastEl = document.getElementById('undo-toast') as HTMLDivElement;
@@ -124,11 +131,13 @@ let currentColor = '#000000';
 // StrokeSmoother parameters
 const positionSmoothing = 0.07;
 let lazyRadius = 30;
-
-let viewScale = 1;
+let lastInputTime = 0;
+let maxCatchUpSmoothing = 0.8;
 let viewOffsetX = 0;
 let viewOffsetY = 0;
 let viewRotation = 0;
+
+let viewScale = 1;
 
 let canvasLogicalW = 1024;
 let canvasLogicalH = 768;
@@ -140,7 +149,6 @@ const activePointers: Map<number, PointerEvent> = new Map();
 let anchorPoint: Point | null = null;
 let lastInputPoint: Point | null = null;
 let lastRenderPos: Point | null = null;
-let lastInputTime = 0;
 
 // Gesture state
 let initialPinchDistance: number | null = null;
@@ -625,6 +633,11 @@ btnResetView.addEventListener('click', () => {
   updateViewTransform();
 });
 
+catchupSlider.addEventListener('input', (e) => {
+  maxCatchUpSmoothing = parseFloat((e.target as HTMLInputElement).value);
+  catchupValEl.innerText = maxCatchUpSmoothing.toFixed(2);
+});
+
 // ===================================================================
 // Coordinate math
 // ===================================================================
@@ -699,9 +712,9 @@ function smootherTick() {
   const elapsed = performance.now() - lastInputTime;
   let currentSmoothing = positionSmoothing;
   if (elapsed > 40) {
-    // Ramp up smoothing factor from positionSmoothing (0.07) to 0.8 over 200ms
+    // Ramp up smoothing factor from positionSmoothing (0.07) to maxCatchUpSmoothing over 200ms
     const t = Math.min(1, (elapsed - 40) / 200);
-    currentSmoothing = positionSmoothing + (0.8 - positionSmoothing) * t;
+    currentSmoothing = positionSmoothing + (maxCatchUpSmoothing - positionSmoothing) * t;
   }
 
   anchorPoint.x += (lastInputPoint.x - anchorPoint.x) * currentSmoothing;
