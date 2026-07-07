@@ -45,11 +45,38 @@ export async function getOrCreateFolderId(): Promise<string> {
   return gdriveFolderId!;
 }
 
+export async function tryRestoreToken(): Promise<boolean> {
+  const token = localStorage.getItem('gdrive_access_token');
+  const expiresAt = localStorage.getItem('gdrive_token_expires_at');
+  if (token && expiresAt && Date.now() < parseInt(expiresAt, 10)) {
+    gdriveAccessToken = token;
+    try {
+      const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { 'Authorization': `Bearer ${gdriveAccessToken}` }
+      });
+      if (res.ok) {
+        gdriveUserInfo = await res.json();
+      } else {
+        gdriveUserInfo = { name: 'User', email: 'Connected (Restored)' };
+      }
+      return true;
+    } catch (e) {
+      gdriveAccessToken = null;
+      return false;
+    }
+  }
+  return false;
+}
+
 export function logoutGDrive() {
   const token = gdriveAccessToken;
   gdriveAccessToken = null;
   gdriveUserInfo = null;
   gdriveFolderId = null;
+  localStorage.removeItem('gdrive_access_token');
+  localStorage.removeItem('gdrive_token_expires_at');
+  localStorage.removeItem('gdrive_user_email');
+  localStorage.removeItem('gdrive_connected');
   if (token) {
     try {
       const google = (window as any).google;
@@ -78,6 +105,13 @@ export function initAndLoginGDrive(clientId: string, silent: boolean = false): P
         callback: async (tokenResponse: any) => {
           if (tokenResponse && tokenResponse.access_token) {
             gdriveAccessToken = tokenResponse.access_token;
+            
+            // Save to localStorage (expires_in is usually 3599 seconds)
+            const expiresIn = tokenResponse.expires_in || 3599;
+            localStorage.setItem('gdrive_access_token', gdriveAccessToken!);
+            // Subtract 1 minute (60000ms) for safety margin
+            localStorage.setItem('gdrive_token_expires_at', (Date.now() + (expiresIn * 1000) - 60000).toString());
+
             try {
               // Fetch user info to confirm
               const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
@@ -87,6 +121,9 @@ export function initAndLoginGDrive(clientId: string, silent: boolean = false): P
               });
               if (res.ok) {
                 gdriveUserInfo = await res.json();
+                if (gdriveUserInfo?.email) {
+                  localStorage.setItem('gdrive_user_email', gdriveUserInfo.email);
+                }
               } else {
                 console.warn('Failed to fetch user info, using placeholder');
                 gdriveUserInfo = { name: 'User', email: 'Connected' };
@@ -104,10 +141,11 @@ export function initAndLoginGDrive(clientId: string, silent: boolean = false): P
         }
       });
       
+      const savedEmail = localStorage.getItem('gdrive_user_email');
       if (silent) {
-        client.requestAccessToken({ prompt: 'none' });
+        client.requestAccessToken({ prompt: 'none', hint: savedEmail || undefined });
       } else {
-        client.requestAccessToken();
+        client.requestAccessToken(savedEmail ? { hint: savedEmail } : undefined);
       }
     } catch (e) {
       reject(e);

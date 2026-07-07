@@ -3,7 +3,7 @@ import Color from 'colorjs.io';
 import { getStorageUsage, getSavedCanvasesMetadata, generateNewCanvasId, saveCanvas, loadCanvas, clearAllCanvases, getAllLocalCanvasIds, deleteLocalCanvas } from './storage';
 import type { SaveData, LayerData, CanvasMetadata } from './storage';
 import {
-  initAndLoginGDrive, logoutGDrive,
+  initAndLoginGDrive, logoutGDrive, tryRestoreToken,
   isGDriveConnected,
   getGDriveUserInfo,
   saveToDrive,
@@ -124,7 +124,7 @@ async function migrateLocalDataToDrive() {
   setTimeout(updateGDriveStatusUI, 2000);
 }
 
-function updateGDriveStatusUI() {
+function updateGDriveStatusUI(errorMessage?: string) {
   const gdriveStatusEl = document.getElementById('gdrive-status');
   const btnGDriveConnect = document.getElementById('btn-gdrive-connect') as HTMLButtonElement;
   if (!gdriveStatusEl || !btnGDriveConnect) return;
@@ -138,8 +138,8 @@ function updateGDriveStatusUI() {
     btnGDriveConnect.style.background = 'var(--destructive)';
     btnGDriveConnect.style.color = 'var(--destructive-foreground)';
   } else {
-    gdriveStatusEl.textContent = '未接続';
-    gdriveStatusEl.style.color = 'var(--muted-foreground)';
+    gdriveStatusEl.textContent = errorMessage || '未接続';
+    gdriveStatusEl.style.color = errorMessage ? 'var(--destructive)' : 'var(--muted-foreground)';
     btnGDriveConnect.textContent = 'ドライブと接続';
     btnGDriveConnect.disabled = false;
     btnGDriveConnect.style.background = '#4285F4';
@@ -1972,6 +1972,16 @@ if (savedClientId && wasConnected) {
   if (gdriveStatusEl) gdriveStatusEl.textContent = '自動接続中...';
   const checkAndSilentLogin = async () => {
     try {
+      // 1. Try to restore valid token from localStorage (no network request needed for Auth)
+      const restored = await tryRestoreToken();
+      if (restored) {
+        updateGDriveStatusUI();
+        showToast('Google ドライブのセッションを復元しました');
+        await renderStartScreen();
+        return;
+      }
+      
+      // 2. Otherwise try silent token request
       await initAndLoginGDrive(savedClientId, true);
       localStorage.setItem('gdrive_connected', 'true');
       updateGDriveStatusUI();
@@ -1979,10 +1989,7 @@ if (savedClientId && wasConnected) {
       await renderStartScreen();
     } catch (err) {
       console.log('Silent login failed (interaction required or offline):', err);
-      if (gdriveStatusEl) {
-        gdriveStatusEl.textContent = '自動接続失敗 (要サインイン)';
-      }
-      updateGDriveStatusUI();
+      updateGDriveStatusUI('自動同期に失敗しました（要サインイン）');
     }
   };
   
