@@ -40,6 +40,25 @@ async function saveGDriveIndex(index: CanvasMetadata[]) {
   await saveToDrive('canvas_index.json', JSON.stringify(index));
 }
 
+async function generateNewCanvasIdAsync(): Promise<string> {
+  if (isGDriveConnected()) {
+    const index = await getGDriveIndex();
+    let maxIndex = -1;
+    for (const meta of index) {
+      if (meta.id.startsWith('paint_canvas_')) {
+        const idxStr = meta.id.replace('paint_canvas_', '');
+        const idx = parseInt(idxStr, 10);
+        if (!isNaN(idx) && idx > maxIndex) {
+          maxIndex = idx;
+        }
+      }
+    }
+    return `paint_canvas_${maxIndex + 1}`;
+  } else {
+    return generateNewCanvasId();
+  }
+}
+
 async function migrateLocalDataToDrive() {
   const localIds = getAllLocalCanvasIds();
   if (localIds.length === 0) return;
@@ -55,17 +74,35 @@ async function migrateLocalDataToDrive() {
     const saveData = loadCanvas(id);
     if (!saveData) continue;
     
+    // ID Collision Check & Auto-Renaming
+    let targetId = id;
+    const exists = index.some(m => m.id === id);
+    if (exists) {
+      let maxIndex = -1;
+      for (const meta of index) {
+        if (meta.id.startsWith('paint_canvas_')) {
+          const idxStr = meta.id.replace('paint_canvas_', '');
+          const idx = parseInt(idxStr, 10);
+          if (!isNaN(idx) && idx > maxIndex) {
+            maxIndex = idx;
+          }
+        }
+      }
+      targetId = `paint_canvas_${maxIndex + 1}`;
+      saveData.id = targetId; // update internal id to avoid confusion
+    }
+    
     // Upload file
-    const fileId = await saveToDrive(`${id}.json`, JSON.stringify(saveData));
+    const fileId = await saveToDrive(`${targetId}.json`, JSON.stringify(saveData));
     
     let thumbnail = '';
     if (saveData.layers && saveData.layers.length > 0) {
       thumbnail = saveData.layers[0].data; // Bottom layer as thumbnail
     }
     
-    const existingIdx = index.findIndex(m => m.id === id);
+    const existingIdx = index.findIndex(m => m.id === targetId);
     const meta: CanvasMetadata = {
-      id,
+      id: targetId,
       name: saveData.name || '無題のキャンバス',
       updatedAt: saveData.updatedAt || new Date().toISOString(),
       thumbnail,
@@ -1163,7 +1200,7 @@ document.addEventListener('click', (e) => {
 
 btnSave.addEventListener('click', async () => {
   if (!currentCanvasId) {
-    currentCanvasId = generateNewCanvasId();
+    currentCanvasId = await generateNewCanvasIdAsync();
   }
   
   const layerData: LayerData[] = layers.map(l => ({
