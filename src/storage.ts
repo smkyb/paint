@@ -3,6 +3,7 @@ export interface LayerData {
   name: string;
   visible: boolean;
   data: string; // base64 encoded PNG
+  clipped?: boolean;
 }
 
 export interface SaveData {

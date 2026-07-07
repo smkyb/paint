@@ -12,6 +12,16 @@ app.innerHTML = `
   <div id="start-screen" class="start-screen">
     <div class="start-content">
       <h1>Paint</h1>
+      <div class="start-settings-panel">
+        <div class="start-settings-row">
+          <label>キャンバスの幅 (px)</label>
+          <input type="number" id="start-canvas-w" value="1024" min="100" max="4096" />
+        </div>
+        <div class="start-settings-row">
+          <label>キャンバスの高さ (px)</label>
+          <input type="number" id="start-canvas-h" value="768" min="100" max="4096" />
+        </div>
+      </div>
       <button id="btn-new-canvas" class="start-button">
         <i data-lucide="plus"></i> 新規作成
       </button>
@@ -27,34 +37,29 @@ app.innerHTML = `
       </div>
     </div>
 
-    <div class="settings-panel panel-card">
-      <div class="settings-row">
-        <label>Canvas W</label>
-        <input type="number" id="canvas-w" value="1024" />
-      </div>
-      <div class="settings-row">
-        <label>Canvas H</label>
-        <input type="number" id="canvas-h" value="768" />
-      </div>
-      <div class="settings-row button-row">
-        <button id="btn-resize" title="Resize" class="icon-btn"><i data-lucide="crop"></i></button>
-        <button id="btn-reset-view" title="Reset View" class="icon-btn"><i data-lucide="maximize"></i></button>
-      </div>
-    </div>
 
-    <div class="layer-panel panel-card">
+
+    <div class="layer-panel panel-card" id="layer-panel">
       <div class="layer-panel-header">
-        <span>Layers</span>
-        <button id="btn-add-layer" title="Add layer" class="icon-btn sm"><i data-lucide="plus"></i></button>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span>Layers</span>
+          <button id="btn-add-layer" title="Add layer" class="icon-btn sm"><i data-lucide="plus"></i></button>
+        </div>
       </div>
       <div class="layer-list" id="layer-list"></div>
+      <div class="layer-actions-row">
+        <button id="btn-active-clip" title="Toggle clipping mask" class="icon-btn sm"><i data-lucide="corner-down-right"></i></button>
+        <button id="btn-active-fill" title="Fill layer elements with current color" class="icon-btn sm"><i data-lucide="palette"></i></button>
+        <button id="btn-active-delete" title="Delete selected layer" class="icon-btn sm"><i data-lucide="trash-2"></i></button>
+      </div>
     </div>
 
     <div class="toolbar panel-card">
       <div class="tool-group">
-        <button id="btn-pen" class="active icon-btn" title="Pen"><i data-lucide="pen-tool"></i></button>
-        <button id="btn-eraser" class="icon-btn" title="Eraser"><i data-lucide="eraser"></i></button>
+        <button id="btn-toggle-tool" class="icon-btn" title="Pen"><i data-lucide="pen-tool"></i></button>
       </div>
+
+
 
       <div class="tool-group slider-group">
         <label>Size: <span id="size-val">5</span>px</label>
@@ -121,8 +126,7 @@ const canvasWrapper = document.getElementById('canvas-wrapper') as HTMLDivElemen
 const container = document.getElementById('canvas-container') as HTMLDivElement;
 const displayCtx = displayCanvas.getContext('2d')!;
 
-const btnPen = document.getElementById('btn-pen') as HTMLButtonElement;
-const btnEraser = document.getElementById('btn-eraser') as HTMLButtonElement;
+const btnToggleTool = document.getElementById('btn-toggle-tool') as HTMLButtonElement;
 const btnSettings = document.getElementById('btn-settings') as HTMLButtonElement;
 const settingsDropdown = document.getElementById('settings-dropdown') as HTMLDivElement;
 const btnSave = document.getElementById('btn-save') as HTMLButtonElement;
@@ -139,14 +143,18 @@ const oklchH = document.getElementById('oklch-h') as HTMLInputElement;
 const stabSlider = document.getElementById('stab-slider') as HTMLInputElement;
 const stabValEl = document.getElementById('stab-val') as HTMLSpanElement;
 
-const canvasWInput = document.getElementById('canvas-w') as HTMLInputElement;
-const canvasHInput = document.getElementById('canvas-h') as HTMLInputElement;
-const btnResize = document.getElementById('btn-resize') as HTMLButtonElement;
-const btnResetView = document.getElementById('btn-reset-view') as HTMLButtonElement;
+
 
 const btnAddLayer = document.getElementById('btn-add-layer') as HTMLButtonElement;
+const btnActiveClip = document.getElementById('btn-active-clip') as HTMLButtonElement;
+const btnActiveFill = document.getElementById('btn-active-fill') as HTMLButtonElement;
+const btnActiveDelete = document.getElementById('btn-active-delete') as HTMLButtonElement;
 const layerListEl = document.getElementById('layer-list') as HTMLDivElement;
+const layerPanelEl = document.getElementById('layer-panel') as HTMLDivElement;
 const undoToastEl = document.getElementById('undo-toast') as HTMLDivElement;
+
+let groupCanvas: HTMLCanvasElement | null = null;
+let groupCtx: CanvasRenderingContext2D | null = null;
 
 // ===================================================================
 // Types & State
@@ -159,6 +167,7 @@ interface Layer {
   visible: boolean;
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
+  clipped: boolean;
 }
 
 let currentTool: 'pen' | 'eraser' = 'pen';
@@ -231,6 +240,7 @@ function addLayerInternal(name?: string): Layer {
     visible: true,
     canvas,
     ctx,
+    clipped: false,
   };
   layers.push(layer);
   activeLayerId = layer.id;
@@ -287,31 +297,12 @@ function deleteLayer(id: number) {
     layerName: result.layer.name,
     imageData,
     prevActiveLayerId: prevActiveId,
+    clipped: layerToDelete.clipped
   });
 }
 
 function getActiveLayer(): Layer | undefined {
   return layers.find(l => l.id === activeLayerId);
-}
-
-function reorderLayers(fromIndex: number, toIndex: number) {
-  if (fromIndex < 0 || fromIndex >= layers.length || toIndex < 0 || toIndex >= layers.length) return;
-  const prevOrder = layers.map(l => l.id);
-  
-  const temp = layers[fromIndex];
-  layers[fromIndex] = layers[toIndex];
-  layers[toIndex] = temp;
-  
-  const nextOrder = layers.map(l => l.id);
-  
-  pushUndo({
-    type: 'reorderLayers',
-    layersOrder: nextOrder,
-    prevLayersOrder: prevOrder
-  });
-  
-  renderLayerList();
-  compositeAndDisplay();
 }
 
 const oklchColorCache: { [key: number]: string } = {};
@@ -346,12 +337,73 @@ function getMaxChromaColor(h: number): string {
   return hex;
 }
 
+function fillLayerColor(layerId: number, colorHex: string) {
+  const layer = layers.find(l => l.id === layerId);
+  if (!layer) return;
+  
+  saveUndoState(layerId);
+  
+  const ctx = layer.ctx;
+  const prevComposite = ctx.globalCompositeOperation;
+  
+  ctx.globalCompositeOperation = 'source-in';
+  ctx.fillStyle = colorHex;
+  ctx.fillRect(0, 0, canvasLogicalW, canvasLogicalH);
+  
+  ctx.globalCompositeOperation = prevComposite;
+  
+  compositeAndDisplay();
+  showToast('Layer color changed');
+}
+
+function finalizeReorder() {
+  const draggingItem = layerListEl.querySelector('.layer-item.dragging') as HTMLDivElement;
+  if (!draggingItem) return;
+  draggingItem.classList.remove('dragging');
+  
+  const children = Array.from(layerListEl.children);
+  const newOrderIds = children.map(child => parseInt(child.getAttribute('data-id')!, 10));
+  newOrderIds.reverse();
+  
+  const currentOrderIds = layers.map(l => l.id);
+  const orderChanged = newOrderIds.some((id, idx) => id !== currentOrderIds[idx]);
+  
+  if (orderChanged) {
+    const prevOrder = [...currentOrderIds];
+    layers.sort((a, b) => newOrderIds.indexOf(a.id) - newOrderIds.indexOf(b.id));
+    
+    // Bottom-most layer cannot be clipped
+    if (layers.length > 0 && layers[0].clipped) {
+      layers[0].clipped = false;
+    }
+    
+    pushUndo({
+      type: 'reorderLayers',
+      layersOrder: [...newOrderIds],
+      prevLayersOrder: prevOrder
+    });
+    
+    compositeAndDisplay();
+  }
+  
+  renderLayerList();
+}
+
 function renderLayerList() {
   layerListEl.innerHTML = '';
   for (let i = layers.length - 1; i >= 0; i--) {
     const layer = layers[i];
     const item = document.createElement('div');
-    item.className = 'layer-item' + (layer.id === activeLayerId ? ' selected' : '');
+    item.className = 'layer-item' + (layer.id === activeLayerId ? ' selected' : '') + (layer.clipped ? ' clipped' : '');
+    item.setAttribute('data-id', layer.id.toString());
+
+    // Clipping mask L-arrow indicator
+    if (layer.clipped) {
+      const clipIndicator = document.createElement('span');
+      clipIndicator.className = 'layer-clip-indicator';
+      clipIndicator.innerHTML = '<i data-lucide="corner-down-right"></i>';
+      item.appendChild(clipIndicator);
+    }
 
     const vis = document.createElement('span');
     vis.className = 'layer-visibility icon-btn sm';
@@ -363,54 +415,105 @@ function renderLayerList() {
       compositeAndDisplay();
     });
 
+    const spacer = document.createElement('div');
+    spacer.style.flex = '1';
+
+    const grip = document.createElement('span');
+    grip.className = 'layer-grip icon-btn sm';
+    grip.innerHTML = '<i data-lucide="grip-vertical"></i>';
+    grip.title = 'Drag to reorder';
+    
+    grip.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      grip.setPointerCapture(e.pointerId);
+      
+      const rect = item.getBoundingClientRect();
+      const startY = e.clientY;
+      const startTop = rect.top;
+      
+      const placeholder = document.createElement('div');
+      placeholder.className = 'layer-item placeholder';
+      placeholder.style.height = `${rect.height}px`;
+      placeholder.style.background = 'var(--muted)';
+      placeholder.style.border = '1px dashed var(--border)';
+      placeholder.style.opacity = '0.5';
+      placeholder.style.borderRadius = 'calc(var(--radius) - 2px)';
+      placeholder.style.boxSizing = 'border-box';
+      
+      layerListEl.insertBefore(placeholder, item);
+      
+      item.classList.add('dragging');
+      item.style.position = 'fixed';
+      item.style.top = `${startTop}px`;
+      item.style.left = `${rect.left}px`;
+      item.style.width = `${rect.width}px`;
+      item.style.height = `${rect.height}px`;
+      item.style.zIndex = '9999';
+      item.style.boxSizing = 'border-box';
+      item.style.margin = '0';
+      
+      const onMove = (ev: PointerEvent) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const deltaY = ev.clientY - startY;
+        item.style.transform = `translateY(${deltaY}px)`;
+        
+        item.style.visibility = 'hidden';
+        const elementUnder = document.elementFromPoint(ev.clientX, ev.clientY);
+        item.style.visibility = '';
+        
+        const targetItem = elementUnder?.closest('.layer-item:not(.dragging)') as HTMLDivElement;
+        if (targetItem && targetItem !== placeholder) {
+          const children = Array.from(layerListEl.children).filter(c => c !== item);
+          const pIdx = children.indexOf(placeholder);
+          const tIdx = children.indexOf(targetItem);
+          if (pIdx < tIdx) {
+            layerListEl.insertBefore(placeholder, targetItem.nextSibling);
+          } else {
+            layerListEl.insertBefore(placeholder, targetItem);
+          }
+        }
+      };
+      
+      const onUp = (ev: PointerEvent) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        grip.removeEventListener('pointermove', onMove);
+        grip.removeEventListener('pointerup', onUp);
+        grip.removeEventListener('pointercancel', onUp);
+        try { grip.releasePointerCapture(ev.pointerId); } catch(err){}
+        
+        layerListEl.insertBefore(item, placeholder);
+        placeholder.remove();
+        
+        item.style.position = '';
+        item.style.top = '';
+        item.style.left = '';
+        item.style.width = '';
+        item.style.height = '';
+        item.style.zIndex = '';
+        item.style.margin = '';
+        item.style.transform = '';
+        item.classList.remove('dragging');
+        
+        finalizeReorder();
+      };
+      
+      grip.addEventListener('pointermove', onMove);
+      grip.addEventListener('pointerup', onUp);
+      grip.addEventListener('pointercancel', onUp);
+    });
+
     const colorCircle = document.createElement('span');
     colorCircle.className = 'layer-color-circle';
     const H = (layer.id % 8) * 45;
     colorCircle.style.backgroundColor = getMaxChromaColor(H);
 
-    const spacer = document.createElement('div');
-    spacer.style.flex = '1';
-
-    const moveUp = document.createElement('span');
-    moveUp.className = 'layer-move icon-btn sm';
-    moveUp.innerHTML = '<i data-lucide="chevron-up"></i>';
-    if (i < layers.length - 1) {
-      moveUp.addEventListener('click', (e) => {
-        e.stopPropagation();
-        reorderLayers(i, i + 1);
-      });
-    } else {
-      moveUp.style.opacity = '0.2';
-      moveUp.style.pointerEvents = 'none';
-    }
-
-    const moveDown = document.createElement('span');
-    moveDown.className = 'layer-move icon-btn sm';
-    moveDown.innerHTML = '<i data-lucide="chevron-down"></i>';
-    if (i > 0) {
-      moveDown.addEventListener('click', (e) => {
-        e.stopPropagation();
-        reorderLayers(i, i - 1);
-      });
-    } else {
-      moveDown.style.opacity = '0.2';
-      moveDown.style.pointerEvents = 'none';
-    }
-
-    const del = document.createElement('span');
-    del.className = 'layer-delete icon-btn sm';
-    del.innerHTML = '<i data-lucide="trash-2"></i>';
-    del.addEventListener('click', (e) => {
-      e.stopPropagation();
-      deleteLayer(layer.id);
-    });
-
     item.appendChild(vis);
     item.appendChild(colorCircle);
     item.appendChild(spacer);
-    item.appendChild(moveUp);
-    item.appendChild(moveDown);
-    item.appendChild(del);
+    item.appendChild(grip);
 
     item.addEventListener('click', () => {
       activeLayerId = layer.id;
@@ -419,10 +522,31 @@ function renderLayerList() {
 
     layerListEl.appendChild(item);
   }
+
+  // Update selected layer actions row state
+  const activeLayer = getActiveLayer();
+  if (activeLayer) {
+    const activeIdx = layers.indexOf(activeLayer);
+    
+    // Clipping mask toggle button
+    btnActiveClip.disabled = (activeIdx === 0);
+    if (activeLayer.clipped) {
+      btnActiveClip.classList.add('active');
+    } else {
+      btnActiveClip.classList.remove('active');
+    }
+
+    // Delete button
+    btnActiveDelete.disabled = (layers.length <= 1);
+  } else {
+    btnActiveClip.disabled = true;
+    btnActiveClip.classList.remove('active');
+    btnActiveDelete.disabled = true;
+  }
   
   if ((window as any).lucide) {
     (window as any).lucide.createIcons({
-      root: layerListEl
+      root: layerPanelEl
     });
   }
 }
@@ -430,6 +554,36 @@ function renderLayerList() {
 btnAddLayer.addEventListener('click', () => {
   addLayer();
   compositeAndDisplay();
+});
+
+btnActiveClip.addEventListener('click', () => {
+  const activeLayer = getActiveLayer();
+  if (!activeLayer) return;
+  const idx = layers.indexOf(activeLayer);
+  if (idx === 0) return;
+  
+  activeLayer.clipped = !activeLayer.clipped;
+  
+  pushUndo({
+    type: 'toggleClip',
+    layerId: activeLayer.id,
+    clipped: activeLayer.clipped
+  });
+  
+  renderLayerList();
+  compositeAndDisplay();
+});
+
+btnActiveFill.addEventListener('click', () => {
+  const activeLayer = getActiveLayer();
+  if (!activeLayer) return;
+  fillLayerColor(activeLayer.id, currentColor);
+});
+
+btnActiveDelete.addEventListener('click', () => {
+  const activeLayer = getActiveLayer();
+  if (!activeLayer) return;
+  deleteLayer(activeLayer.id);
 });
 
 // ===================================================================
@@ -448,6 +602,7 @@ interface AddLayerUndoEntry {
   layerName: string;
   imageData: ImageData | null;
   prevActiveLayerId: number;
+  clipped?: boolean;
 }
 
 interface DeleteLayerUndoEntry {
@@ -457,6 +612,7 @@ interface DeleteLayerUndoEntry {
   layerName: string;
   imageData: ImageData;
   prevActiveLayerId: number;
+  clipped?: boolean;
 }
 
 interface ReorderLayersUndoEntry {
@@ -465,7 +621,13 @@ interface ReorderLayersUndoEntry {
   prevLayersOrder: number[];
 }
 
-type UndoEntry = StrokeUndoEntry | AddLayerUndoEntry | DeleteLayerUndoEntry | ReorderLayersUndoEntry;
+interface ToggleClipUndoEntry {
+  type: 'toggleClip';
+  layerId: number;
+  clipped: boolean;
+}
+
+type UndoEntry = StrokeUndoEntry | AddLayerUndoEntry | DeleteLayerUndoEntry | ReorderLayersUndoEntry | ToggleClipUndoEntry;
 
 const undoStack: UndoEntry[] = [];
 const redoStack: UndoEntry[] = [];
@@ -517,6 +679,7 @@ function performUndo() {
         layerName: entry.layerName,
         imageData,
         prevActiveLayerId: activeLayerId,
+        clipped: entry.clipped || false
       });
       renderLayerList();
       break;
@@ -530,6 +693,7 @@ function performUndo() {
         visible: true,
         canvas,
         ctx,
+        clipped: entry.clipped || false,
       };
       restoredLayer.ctx.putImageData(entry.imageData, 0, 0);
       // Ensure nextLayerId stays ahead
@@ -562,6 +726,19 @@ function performUndo() {
       renderLayerList();
       break;
     }
+    case 'toggleClip': {
+      const layer = layers.find(l => l.id === entry.layerId);
+      if (layer) {
+        redoStack.push({
+          type: 'toggleClip',
+          layerId: entry.layerId,
+          clipped: layer.clipped
+        });
+        layer.clipped = entry.clipped;
+        renderLayerList();
+      }
+      break;
+    }
   }
 
   compositeAndDisplay();
@@ -590,6 +767,7 @@ function performRedo() {
         visible: true,
         canvas,
         ctx,
+        clipped: entry.clipped || false,
       };
       if (entry.imageData) {
         restoredLayer.ctx.putImageData(entry.imageData, 0, 0);
@@ -628,6 +806,7 @@ function performRedo() {
         layerName: entry.layerName,
         imageData,
         prevActiveLayerId: prevActive,
+        clipped: entry.clipped || false
       });
       renderLayerList();
       break;
@@ -641,6 +820,19 @@ function performRedo() {
         prevLayersOrder: entry.layersOrder
       });
       renderLayerList();
+      break;
+    }
+    case 'toggleClip': {
+      const layer = layers.find(l => l.id === entry.layerId);
+      if (layer) {
+        undoStack.push({
+          type: 'toggleClip',
+          layerId: entry.layerId,
+          clipped: layer.clipped
+        });
+        layer.clipped = entry.clipped;
+        renderLayerList();
+      }
       break;
     }
   }
@@ -674,6 +866,13 @@ function initCanvasSize(w: number, h: number) {
   canvasWrapper.style.width = `${w}px`;
   canvasWrapper.style.height = `${h}px`;
 
+  if (!groupCanvas) {
+    groupCanvas = document.createElement('canvas');
+  }
+  groupCanvas.width = w * dpr;
+  groupCanvas.height = h * dpr;
+  groupCtx = groupCanvas.getContext('2d')!;
+
   displayCtx.scale(dpr, dpr);
 }
 
@@ -684,10 +883,38 @@ function compositeAndDisplay() {
   displayCtx.fillStyle = '#ffffff';
   displayCtx.fillRect(0, 0, displayCanvas.width, displayCanvas.height);
 
-  // Draw each visible layer bottom-to-top
-  for (const layer of layers) {
-    if (!layer.visible) continue;
-    displayCtx.drawImage(layer.canvas, 0, 0, displayCanvas.width, displayCanvas.height);
+  if (!groupCanvas || !groupCtx) {
+    displayCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return;
+  }
+
+  // Draw layers bottom-to-top with clipping masks
+  for (let i = 0; i < layers.length; i++) {
+    const layer = layers[i];
+    const isClipped = layer.clipped;
+    const nextIsClipped = (i + 1 < layers.length) && layers[i + 1].clipped;
+
+    if (isClipped) {
+      if (layer.visible) {
+        groupCtx.globalCompositeOperation = 'source-atop';
+        groupCtx.drawImage(layer.canvas, 0, 0);
+      }
+      if (!nextIsClipped) {
+        displayCtx.drawImage(groupCanvas, 0, 0);
+      }
+    } else {
+      if (nextIsClipped) {
+        groupCtx.clearRect(0, 0, groupCanvas.width, groupCanvas.height);
+        if (layer.visible) {
+          groupCtx.globalCompositeOperation = 'source-over';
+          groupCtx.drawImage(layer.canvas, 0, 0);
+        }
+      } else {
+        if (layer.visible) {
+          displayCtx.drawImage(layer.canvas, 0, 0);
+        }
+      }
+    }
   }
 
   displayCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -739,16 +966,28 @@ oklchH.addEventListener('input', handleOklchInput);
 // ===================================================================
 // UI Listeners
 // ===================================================================
-btnPen.addEventListener('click', () => {
+function resetToolToPen() {
   currentTool = 'pen';
-  btnPen.classList.add('active');
-  btnEraser.classList.remove('active');
-});
+  btnToggleTool.innerHTML = '<i data-lucide="pen-tool"></i>';
+  btnToggleTool.title = 'Pen';
+  if ((window as any).lucide) {
+    (window as any).lucide.createIcons({ root: btnToggleTool });
+  }
+}
 
-btnEraser.addEventListener('click', () => {
-  currentTool = 'eraser';
-  btnEraser.classList.add('active');
-  btnPen.classList.remove('active');
+btnToggleTool.addEventListener('click', () => {
+  if (currentTool === 'pen') {
+    currentTool = 'eraser';
+    btnToggleTool.innerHTML = '<i data-lucide="eraser"></i>';
+    btnToggleTool.title = 'Eraser';
+  } else {
+    currentTool = 'pen';
+    btnToggleTool.innerHTML = '<i data-lucide="pen-tool"></i>';
+    btnToggleTool.title = 'Pen';
+  }
+  if ((window as any).lucide) {
+    (window as any).lucide.createIcons({ root: btnToggleTool });
+  }
 });
 
 btnSettings.addEventListener('click', (e) => {
@@ -771,7 +1010,8 @@ btnSave.addEventListener('click', () => {
     id: l.id,
     name: l.name,
     visible: l.visible,
-    data: l.canvas.toDataURL('image/png')
+    data: l.canvas.toDataURL('image/png'),
+    clipped: l.clipped
   }));
   
   const saveData: SaveData = {
@@ -830,34 +1070,9 @@ stabSlider.addEventListener('input', (e) => {
   stabValEl.innerText = lazyRadius.toString();
 });
 
-btnResize.addEventListener('click', () => {
-  const w = parseInt(canvasWInput.value, 10);
-  const h = parseInt(canvasHInput.value, 10);
-  if (w > 0 && h > 0) {
-    initCanvasSize(w, h);
-    // Recreate all layer canvases at new size (existing content is lost)
-    const dpr = window.devicePixelRatio || 1;
-    for (const layer of layers) {
-      layer.canvas.width = w * dpr;
-      layer.canvas.height = h * dpr;
-      layer.ctx.setTransform(1, 0, 0, 1, 0, 0);
-      layer.ctx.scale(dpr, dpr);
-      layer.ctx.lineCap = 'round';
-      layer.ctx.lineJoin = 'round';
-    }
-    undoStack.length = 0;
-    redoStack.length = 0;
-    compositeAndDisplay();
-  }
-});
 
-btnResetView.addEventListener('click', () => {
-  viewScale = 1;
-  viewRotation = 0;
-  viewOffsetX = (container.clientWidth - canvasLogicalW) / 2;
-  viewOffsetY = (container.clientHeight - canvasLogicalH) / 2;
-  updateViewTransform();
-});
+
+
 
 // ===================================================================
 // Coordinate math
@@ -1202,7 +1417,14 @@ document.addEventListener('keydown', (e) => {
 // ===================================================================
 function initNewCanvas() {
   currentCanvasId = null;
-  initCanvasSize(1024, 768);
+  resetToolToPen();
+  
+  const startWInput = document.getElementById('start-canvas-w') as HTMLInputElement;
+  const startHInput = document.getElementById('start-canvas-h') as HTMLInputElement;
+  const w = parseInt(startWInput?.value || '1024', 10) || 1024;
+  const h = parseInt(startHInput?.value || '768', 10) || 768;
+  
+  initCanvasSize(w, h);
   layers.forEach(l => l.canvas.remove());
   layers.length = 0;
   nextLayerId = 0;
@@ -1230,6 +1452,7 @@ function loadSavedCanvas(id: string) {
   }
   
   currentCanvasId = data.id;
+  resetToolToPen();
   startScreen.style.display = 'none';
   paintApp.style.display = 'flex';
   
@@ -1248,7 +1471,8 @@ function loadSavedCanvas(id: string) {
       name: ld.name,
       visible: ld.visible,
       canvas,
-      ctx
+      ctx,
+      clipped: ld.clipped || false
     };
     layers.push(l);
     

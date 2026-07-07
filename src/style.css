@@ -146,6 +146,12 @@ button:hover {
   color: var(--accent-foreground);
 }
 
+button:disabled {
+  opacity: 0.3;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
 button.active {
   background-color: var(--primary);
   color: var(--primary-foreground);
@@ -164,6 +170,18 @@ button.primary:hover {
 .icon-btn {
   padding: 8px;
   border-radius: calc(var(--radius) - 2px);
+}
+
+#btn-toggle-tool {
+  background-color: var(--secondary);
+  color: var(--secondary-foreground);
+  padding: 14px;
+}
+
+#btn-toggle-tool:hover {
+  background-color: var(--accent);
+  color: var(--accent-foreground);
+  opacity: 0.9;
 }
 
 .icon-btn i {
@@ -282,37 +300,43 @@ input[type="color"] {
   border-color: var(--ring);
 }
 
-/* Settings panel */
-.settings-panel {
-  position: absolute;
-  top: 24px;
-  right: 24px;
-  padding: 16px;
+/* Settings panel (on start screen) */
+.start-settings-panel {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  min-width: 180px;
+  margin-bottom: 24px;
+  background: var(--card);
+  padding: 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  width: 100%;
+  box-sizing: border-box;
 }
 
-.settings-row {
+.start-settings-row {
   display: flex;
-  align-items: center;
-  gap: 12px;
   justify-content: space-between;
-  font-size: 13px;
-  font-weight: 500;
+  align-items: center;
+  gap: 16px;
 }
 
-.settings-row input {
-  width: 60px;
-  background: var(--background);
-  border: 1px solid var(--input);
-  color: var(--foreground);
+.start-settings-row label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+.start-settings-row input {
+  width: 100px;
+  padding: 6px 10px;
   border-radius: calc(var(--radius) - 2px);
-  padding: 6px;
-  font-size: 13px;
+  border: 1px solid var(--border);
+  background: var(--input);
+  color: var(--foreground);
   font-family: inherit;
-  text-align: center;
+  font-size: 14px;
+  text-align: right;
 }
 
 .settings-row input:focus {
@@ -331,13 +355,29 @@ input[type="color"] {
   position: absolute;
   top: 24px;
   left: 24px;
-  width: 220px;
+  width: 160px;
   max-height: calc(100vh - 120px);
-  padding: 16px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 12px;
   overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.layer-panel::-webkit-scrollbar {
+  display: none;
+}
+
+.layer-actions-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
 }
 
 .layer-panel-header {
@@ -377,6 +417,22 @@ input[type="color"] {
   color: var(--accent-foreground);
 }
 
+.layer-item.clipped {
+  padding-left: 20px;
+}
+
+.layer-clip-indicator {
+  color: var(--muted-foreground);
+  display: inline-flex;
+  align-items: center;
+  margin-right: -4px;
+}
+
+.layer-clip-indicator i {
+  width: 14px;
+  height: 14px;
+}
+
 .layer-item .layer-visibility {
   color: var(--muted-foreground);
 }
@@ -400,16 +456,32 @@ input[type="color"] {
   flex-shrink: 0;
 }
 
-.layer-item .layer-move {
+.layer-item .layer-grip {
   color: var(--muted-foreground);
+  touch-action: none;
+  cursor: grab;
 }
 
-.layer-item .layer-move:hover {
+.layer-item .layer-grip:hover {
   color: var(--foreground);
+}
+
+.layer-item.dragging {
+  opacity: 0.5;
+  background: var(--muted);
+  border: 1px dashed var(--border);
 }
 
 .layer-item .layer-delete {
   color: var(--muted-foreground);
+}
+
+.layer-item .layer-fill {
+  color: var(--muted-foreground);
+}
+
+.layer-item .layer-fill:hover {
+  color: var(--foreground);
 }
 
 .layer-item .layer-delete:hover {
