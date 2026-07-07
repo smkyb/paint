@@ -23,7 +23,7 @@ export function initAndLoginGDrive(clientId: string): Promise<void> {
 
       const client = google.accounts.oauth2.initTokenClient({
         client_id: clientId,
-        scope: 'https://www.googleapis.com/auth/drive.file',
+        scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email',
         callback: async (tokenResponse: any) => {
           if (tokenResponse && tokenResponse.access_token) {
             gdriveAccessToken = tokenResponse.access_token;
@@ -36,10 +36,11 @@ export function initAndLoginGDrive(clientId: string): Promise<void> {
               });
               if (res.ok) {
                 gdriveUserInfo = await res.json();
-                resolve();
               } else {
-                reject(new Error('Failed to fetch user info'));
+                console.warn('Failed to fetch user info, using placeholder');
+                gdriveUserInfo = { name: 'User', email: 'Connected' };
               }
+              resolve();
             } catch (err) {
               reject(err);
             }
