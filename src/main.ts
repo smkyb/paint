@@ -358,8 +358,9 @@ function fillLayerColor(layerId: number, colorHex: string) {
 
 function finalizeReorder() {
   const draggingItem = layerListEl.querySelector('.layer-item.dragging') as HTMLDivElement;
-  if (!draggingItem) return;
-  draggingItem.classList.remove('dragging');
+  if (draggingItem) {
+    draggingItem.classList.remove('dragging');
+  }
   
   const children = Array.from(layerListEl.children);
   const newOrderIds = children.map(child => parseInt(child.getAttribute('data-id')!, 10));
@@ -397,13 +398,7 @@ function renderLayerList() {
     item.className = 'layer-item' + (layer.id === activeLayerId ? ' selected' : '') + (layer.clipped ? ' clipped' : '');
     item.setAttribute('data-id', layer.id.toString());
 
-    // Clipping mask L-arrow indicator
-    if (layer.clipped) {
-      const clipIndicator = document.createElement('span');
-      clipIndicator.className = 'layer-clip-indicator';
-      clipIndicator.innerHTML = '<i data-lucide="corner-down-right"></i>';
-      item.appendChild(clipIndicator);
-    }
+
 
     const vis = document.createElement('span');
     vis.className = 'layer-visibility icon-btn sm';
@@ -495,7 +490,6 @@ function renderLayerList() {
         item.style.zIndex = '';
         item.style.margin = '';
         item.style.transform = '';
-        item.classList.remove('dragging');
         
         finalizeReorder();
       };
@@ -511,6 +505,15 @@ function renderLayerList() {
     colorCircle.style.backgroundColor = getMaxChromaColor(H);
 
     item.appendChild(vis);
+
+    // Clipping mask L-arrow indicator
+    if (layer.clipped) {
+      const clipIndicator = document.createElement('span');
+      clipIndicator.className = 'layer-clip-indicator';
+      clipIndicator.innerHTML = '<i data-lucide="corner-down-right"></i>';
+      item.appendChild(clipIndicator);
+    }
+
     item.appendChild(colorCircle);
     item.appendChild(spacer);
     item.appendChild(grip);

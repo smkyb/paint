@@ -175,13 +175,15 @@ button.primary:hover {
   border-radius: calc(var(--radius) - 2px);
 }
 
-#btn-toggle-tool {
-  background-color: var(--secondary);
-  color: var(--secondary-foreground);
+#btn-toggle-tool,
+#btn-settings {
+  background-color: transparent;
+  color: var(--foreground);
   padding: 14px;
 }
 
-#btn-toggle-tool:hover {
+#btn-toggle-tool:hover,
+#btn-settings:hover {
   background-color: var(--accent);
   color: var(--accent-foreground);
   opacity: 0.9;
@@ -427,9 +429,7 @@ input[type="color"] {
   color: var(--accent-foreground);
 }
 
-.layer-item.clipped {
-  padding-left: 20px;
-}
+
 
 .layer-clip-indicator {
   color: var(--muted-foreground);
