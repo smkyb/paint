@@ -13,7 +13,58 @@ export function isGDriveConnected() {
   return gdriveAccessToken !== null;
 }
 
-export function initAndLoginGDrive(clientId: string): Promise<void> {
+let gdriveFolderId: string | null = null;
+
+export async function getOrCreateFolderId(): Promise<string> {
+  if (gdriveFolderId) return gdriveFolderId;
+  
+  // Search for the folder 'PaintApp'
+  const query = encodeURIComponent("name='PaintApp' and mimeType='application/vnd.google-apps.folder' and trashed=false");
+  const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id)`;
+  const res = await driveFetch(url);
+  const data = await res.json();
+  
+  if (data.files && data.files.length > 0) {
+    gdriveFolderId = data.files[0].id;
+  } else {
+    // Create folder 'PaintApp'
+    const createUrl = 'https://www.googleapis.com/drive/v3/files';
+    const createRes = await driveFetch(createUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: 'PaintApp',
+        mimeType: 'application/vnd.google-apps.folder'
+      })
+    });
+    const createData = await createRes.json();
+    gdriveFolderId = createData.id;
+  }
+  return gdriveFolderId!;
+}
+
+export function logoutGDrive() {
+  const token = gdriveAccessToken;
+  gdriveAccessToken = null;
+  gdriveUserInfo = null;
+  gdriveFolderId = null;
+  if (token) {
+    try {
+      const google = (window as any).google;
+      if (google && google.accounts && google.accounts.oauth2) {
+        google.accounts.oauth2.revokeToken(token, () => {
+          console.log('Access token revoked');
+        });
+      }
+    } catch (e) {
+      console.warn('Failed to revoke token', e);
+    }
+  }
+}
+
+export function initAndLoginGDrive(clientId: string, silent: boolean = false): Promise<void> {
   return new Promise((resolve, reject) => {
     try {
       const google = (window as any).google;
@@ -52,7 +103,12 @@ export function initAndLoginGDrive(clientId: string): Promise<void> {
           reject(err);
         }
       });
-      client.requestAccessToken();
+      
+      if (silent) {
+        client.requestAccessToken({ prompt: 'none' });
+      } else {
+        client.requestAccessToken();
+      }
     } catch (e) {
       reject(e);
     }
@@ -72,9 +128,10 @@ async function driveFetch(url: string, options: RequestInit = {}) {
   return res;
 }
 
-// Find a file by name (returns the file ID, or null if not found)
+// Find a file by name inside 'PaintApp' folder (returns the file ID, or null if not found)
 export async function findDriveFileId(name: string): Promise<string | null> {
-  const query = encodeURIComponent(`name='${name}' and trashed=false`);
+  const folderId = await getOrCreateFolderId();
+  const query = encodeURIComponent(`name='${name}' and '${folderId}' in parents and trashed=false`);
   const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`;
   const res = await driveFetch(url);
   const data = await res.json();
@@ -86,7 +143,12 @@ export async function findDriveFileId(name: string): Promise<string | null> {
 
 // Upload a file (creates if fileId is null, updates if fileId is provided)
 export async function uploadDriveFile(name: string, content: string, fileId: string | null = null): Promise<string> {
-  const metadata = { name, mimeType: 'application/json' };
+  const folderId = await getOrCreateFolderId();
+  const metadata: any = { name, mimeType: 'application/json' };
+  if (!fileId) {
+    metadata.parents = [folderId];
+  }
+
   const boundary = '-------314159265358979323846';
   const delimiter = `\r\n--${boundary}\r\n`;
   const closeDelim = `\r\n--${boundary}--`;

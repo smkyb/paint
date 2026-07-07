@@ -3,7 +3,7 @@ import Color from 'colorjs.io';
 import { getStorageUsage, getSavedCanvasesMetadata, generateNewCanvasId, saveCanvas, loadCanvas, clearAllCanvases, getAllLocalCanvasIds, deleteLocalCanvas } from './storage';
 import type { SaveData, LayerData, CanvasMetadata } from './storage';
 import {
-  initAndLoginGDrive,
+  initAndLoginGDrive, logoutGDrive,
   isGDriveConnected,
   getGDriveUserInfo,
   saveToDrive,
@@ -133,13 +133,17 @@ function updateGDriveStatusUI() {
     const user = getGDriveUserInfo();
     gdriveStatusEl.textContent = `接続中 (${user?.email || 'Unknown'})`;
     gdriveStatusEl.style.color = '#34A853';
-    btnGDriveConnect.textContent = '同期完了';
-    btnGDriveConnect.disabled = true;
+    btnGDriveConnect.textContent = '接続解除';
+    btnGDriveConnect.disabled = false;
+    btnGDriveConnect.style.background = 'var(--destructive)';
+    btnGDriveConnect.style.color = 'var(--destructive-foreground)';
   } else {
     gdriveStatusEl.textContent = '未接続';
     gdriveStatusEl.style.color = 'var(--muted-foreground)';
     btnGDriveConnect.textContent = 'ドライブと接続';
     btnGDriveConnect.disabled = false;
+    btnGDriveConnect.style.background = '#4285F4';
+    btnGDriveConnect.style.color = 'white';
   }
 }
 
@@ -152,37 +156,56 @@ app.innerHTML = `
   <div id="start-screen" class="start-screen">
     <div class="start-content">
       <h1>Paint</h1>
-      <div class="start-settings-panel">
-        <div class="start-settings-row">
-          <label>キャンバスの幅 (px)</label>
-          <input type="number" id="start-canvas-w" value="1024" min="100" max="4096" />
-        </div>
-        <div class="start-settings-row">
-          <label>キャンバスの高さ (px)</label>
-          <input type="number" id="start-canvas-h" value="768" min="100" max="4096" />
-        </div>
-      </div>
-      <button id="btn-new-canvas" class="start-button">
-        <i data-lucide="plus"></i> 新規作成
-      </button>
-
-      <div class="gdrive-settings" style="margin-top: 20px; background: var(--secondary); padding: 16px; border-radius: 8px;">
-        <h3 style="margin-top: 0; margin-bottom: 12px; font-size: 14px; font-weight: bold; display: flex; align-items: center; gap: 6px;">
-          <i data-lucide="cloud"></i> Google ドライブ連携
-        </h3>
-        <div class="start-settings-row">
-          <label>クライアントID</label>
-          <input type="text" id="gdrive-client-id" placeholder="OAuth Client ID" style="font-size: 12px;" />
-        </div>
-        <div class="button-row" style="margin-top: 12px; display: flex; gap: 8px;">
-          <button id="btn-save-gdrive-creds" class="start-button secondary" style="flex: 1; height: 32px; font-size: 12px;">保存</button>
-          <button id="btn-gdrive-connect" class="start-button" style="flex: 1; height: 32px; font-size: 12px; background: #4285F4; color: white;">ドライブと接続</button>
-        </div>
-        <div id="gdrive-status" style="margin-top: 8px; font-size: 12px; color: var(--muted-foreground);">未接続</div>
+      
+      <div style="display: flex; gap: 12px; margin-bottom: 24px; width: 100%;">
+        <button id="btn-new-canvas" class="start-button" style="flex: 2;">
+          <i data-lucide="plus"></i> 新規作成
+        </button>
+        <button id="btn-start-settings" class="start-button secondary" style="flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 16px;">
+          <i data-lucide="settings"></i> 設定
+        </button>
       </div>
 
       <div id="storage-info" class="storage-info" style="margin-top: 20px;"></div>
       <div id="saved-canvases-list" class="saved-canvases-list" style="margin-top: 12px;"></div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="start-settings-modal" class="start-modal">
+      <div class="start-modal-content">
+        <button id="btn-close-start-settings" class="start-modal-close">
+          <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+        </button>
+        
+        <h2 style="margin-top: 0; margin-bottom: 20px; font-size: 18px; font-weight: bold; border-bottom: 1px solid var(--border); padding-bottom: 10px;">設定</h2>
+        
+        <div class="start-settings-panel" style="margin-bottom: 20px;">
+          <h3 style="margin-top: 0; margin-bottom: 12px; font-size: 14px; font-weight: bold;">新規キャンバスサイズ</h3>
+          <div class="start-settings-row">
+            <label>キャンバスの幅 (px)</label>
+            <input type="number" id="start-canvas-w" value="1024" min="100" max="4096" />
+          </div>
+          <div class="start-settings-row">
+            <label>キャンバスの高さ (px)</label>
+            <input type="number" id="start-canvas-h" value="768" min="100" max="4096" />
+          </div>
+        </div>
+
+        <div class="gdrive-settings" style="background: var(--secondary); padding: 16px; border-radius: 8px;">
+          <h3 style="margin-top: 0; margin-bottom: 12px; font-size: 14px; font-weight: bold; display: flex; align-items: center; gap: 6px;">
+            <i data-lucide="cloud"></i> Google ドライブ連携
+          </h3>
+          <div class="start-settings-row">
+            <label>クライアントID</label>
+            <input type="text" id="gdrive-client-id" placeholder="OAuth Client ID" style="font-size: 12px;" />
+          </div>
+          <div class="button-row" style="margin-top: 12px; display: flex; gap: 8px;">
+            <button id="btn-save-gdrive-creds" class="start-button secondary" style="flex: 1; height: 32px; font-size: 12px;">保存</button>
+            <button id="btn-gdrive-connect" class="start-button" style="flex: 1; height: 32px; font-size: 12px; background: #4285F4; color: white;">接続</button>
+          </div>
+          <div id="gdrive-status" style="margin-top: 8px; font-size: 12px; color: var(--muted-foreground);">未接続</div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1880,6 +1903,16 @@ if (btnSaveGDriveCreds) {
 
 if (btnGDriveConnect) {
   btnGDriveConnect.addEventListener('click', async () => {
+    if (isGDriveConnected()) {
+      // Disconnect
+      logoutGDrive();
+      localStorage.removeItem('gdrive_connected');
+      updateGDriveStatusUI();
+      showToast('Google ドライブの接続を解除しました');
+      renderStartScreen();
+      return;
+    }
+
     const clientId = gdriveClientIdInput.value.trim();
     if (!clientId) {
       alert('クライアントIDを入力してください');
@@ -1889,7 +1922,8 @@ if (btnGDriveConnect) {
     
     if (gdriveStatusEl) gdriveStatusEl.textContent = '接続中...';
     try {
-      await initAndLoginGDrive(clientId);
+      await initAndLoginGDrive(clientId, false);
+      localStorage.setItem('gdrive_connected', 'true');
       updateGDriveStatusUI();
       showToast('Google ドライブに接続しました');
       
@@ -1905,6 +1939,65 @@ if (btnGDriveConnect) {
   });
 }
 updateGDriveStatusUI();
+
+// Start Settings Modal Interaction
+const btnStartSettings = document.getElementById('btn-start-settings') as HTMLButtonElement;
+const btnCloseStartSettings = document.getElementById('btn-close-start-settings') as HTMLButtonElement;
+const startSettingsModal = document.getElementById('start-settings-modal') as HTMLDivElement;
+
+if (btnStartSettings && startSettingsModal) {
+  btnStartSettings.addEventListener('click', () => {
+    startSettingsModal.classList.add('show');
+  });
+}
+
+if (btnCloseStartSettings && startSettingsModal) {
+  btnCloseStartSettings.addEventListener('click', () => {
+    startSettingsModal.classList.remove('show');
+  });
+}
+
+if (startSettingsModal) {
+  startSettingsModal.addEventListener('click', (e) => {
+    if (e.target === startSettingsModal) {
+      startSettingsModal.classList.remove('show');
+    }
+  });
+}
+
+// Attempt silent login if previously connected
+const savedClientId = localStorage.getItem('gdrive_client_id') || '';
+const wasConnected = localStorage.getItem('gdrive_connected') === 'true';
+if (savedClientId && wasConnected) {
+  if (gdriveStatusEl) gdriveStatusEl.textContent = '自動接続中...';
+  const checkAndSilentLogin = async () => {
+    try {
+      await initAndLoginGDrive(savedClientId, true);
+      localStorage.setItem('gdrive_connected', 'true');
+      updateGDriveStatusUI();
+      showToast('Google ドライブに自動接続しました');
+      await renderStartScreen();
+    } catch (err) {
+      console.log('Silent login failed (interaction required or offline):', err);
+      if (gdriveStatusEl) {
+        gdriveStatusEl.textContent = '自動接続失敗 (要サインイン)';
+      }
+      updateGDriveStatusUI();
+    }
+  };
+  
+  if ((window as any).google && (window as any).google.accounts) {
+    checkAndSilentLogin();
+  } else {
+    const timer = setInterval(() => {
+      if ((window as any).google && (window as any).google.accounts) {
+        clearInterval(timer);
+        checkAndSilentLogin();
+      }
+    }, 100);
+    setTimeout(() => clearInterval(timer), 5000);
+  }
+}
 
 
 // ===================================================================
