@@ -1,0 +1,136 @@
+let gdriveAccessToken: string | null = null;
+let gdriveUserInfo: { name: string; email: string } | null = null;
+
+export function getGDriveToken() {
+  return gdriveAccessToken;
+}
+
+export function getGDriveUserInfo() {
+  return gdriveUserInfo;
+}
+
+export function isGDriveConnected() {
+  return gdriveAccessToken !== null;
+}
+
+export function initAndLoginGDrive(clientId: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    try {
+      const google = (window as any).google;
+      if (!google || !google.accounts) {
+        return reject(new Error('Google Identity Services script not loaded.'));
+      }
+
+      const client = google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope: 'https://www.googleapis.com/auth/drive.file',
+        callback: async (tokenResponse: any) => {
+          if (tokenResponse && tokenResponse.access_token) {
+            gdriveAccessToken = tokenResponse.access_token;
+            try {
+              // Fetch user info to confirm
+              const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: {
+                  'Authorization': `Bearer ${gdriveAccessToken}`
+                }
+              });
+              if (res.ok) {
+                gdriveUserInfo = await res.json();
+                resolve();
+              } else {
+                reject(new Error('Failed to fetch user info'));
+              }
+            } catch (err) {
+              reject(err);
+            }
+          } else {
+            reject(new Error('Failed to get access token'));
+          }
+        },
+        error_callback: (err: any) => {
+          reject(err);
+        }
+      });
+      client.requestAccessToken();
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+// Helper to make API calls to Drive
+async function driveFetch(url: string, options: RequestInit = {}) {
+  if (!gdriveAccessToken) throw new Error('Not connected to Google Drive');
+  const headers = new Headers(options.headers || {});
+  headers.set('Authorization', `Bearer ${gdriveAccessToken}`);
+  
+  const res = await fetch(url, { ...options, headers });
+  if (!res.ok) {
+    throw new Error(`Drive API error: ${res.status} ${res.statusText}`);
+  }
+  return res;
+}
+
+// Find a file by name (returns the file ID, or null if not found)
+export async function findDriveFileId(name: string): Promise<string | null> {
+  const query = encodeURIComponent(`name='${name}' and trashed=false`);
+  const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`;
+  const res = await driveFetch(url);
+  const data = await res.json();
+  if (data.files && data.files.length > 0) {
+    return data.files[0].id; // Return the first matching file
+  }
+  return null;
+}
+
+// Upload a file (creates if fileId is null, updates if fileId is provided)
+export async function uploadDriveFile(name: string, content: string, fileId: string | null = null): Promise<string> {
+  const metadata = { name, mimeType: 'application/json' };
+  const boundary = '-------314159265358979323846';
+  const delimiter = `\r\n--${boundary}\r\n`;
+  const closeDelim = `\r\n--${boundary}--`;
+  
+  const multipartRequestBody =
+    delimiter +
+    'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+    JSON.stringify(metadata) +
+    delimiter +
+    'Content-Type: application/json\r\n\r\n' +
+    content +
+    closeDelim;
+
+  const url = fileId
+    ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`
+    : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
+    
+  const method = fileId ? 'PATCH' : 'POST';
+
+  const res = await driveFetch(url, {
+    method,
+    headers: {
+      'Content-Type': `multipart/related; boundary=${boundary}`
+    },
+    body: multipartRequestBody
+  });
+  const data = await res.json();
+  return data.id; // Returns the file ID
+}
+
+// Download a file's content as text
+export async function downloadDriveFile(fileId: string): Promise<string> {
+  const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+  const res = await driveFetch(url);
+  return await res.text();
+}
+
+// Delete a file from Google Drive
+export async function deleteDriveFile(fileId: string): Promise<void> {
+  const url = `https://www.googleapis.com/drive/v3/files/${fileId}`;
+  await driveFetch(url, { method: 'DELETE' });
+}
+
+// High-level: save by name (auto finds and updates, or creates)
+export async function saveToDrive(name: string, content: string): Promise<string> {
+  const existingId = await findDriveFileId(name);
+  return await uploadDriveFile(name, content, existingId);
+}

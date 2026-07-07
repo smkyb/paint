@@ -1,7 +1,110 @@
 import './style.css';
 import Color from 'colorjs.io';
-import { getStorageUsage, getSavedCanvasesMetadata, generateNewCanvasId, saveCanvas, loadCanvas, clearAllCanvases } from './storage';
-import type { SaveData, LayerData } from './storage';
+import { getStorageUsage, getSavedCanvasesMetadata, generateNewCanvasId, saveCanvas, loadCanvas, clearAllCanvases, getAllLocalCanvasIds, deleteLocalCanvas } from './storage';
+import type { SaveData, LayerData, CanvasMetadata } from './storage';
+import {
+  initAndLoginGDrive,
+  isGDriveConnected,
+  getGDriveUserInfo,
+  saveToDrive,
+  findDriveFileId,
+  downloadDriveFile,
+  deleteDriveFile
+} from './gdrive';
+
+
+// ===================================================================
+// GDrive State & Index
+// ===================================================================
+let gdriveIndex: CanvasMetadata[] | null = null;
+
+async function getGDriveIndex(): Promise<CanvasMetadata[]> {
+  if (gdriveIndex) return gdriveIndex;
+  try {
+    const fileId = await findDriveFileId('canvas_index.json');
+    if (fileId) {
+      const content = await downloadDriveFile(fileId);
+      gdriveIndex = JSON.parse(content);
+    } else {
+      gdriveIndex = [];
+    }
+  } catch (err) {
+    console.error('Failed to get GDrive index', err);
+    gdriveIndex = [];
+  }
+  return gdriveIndex!;
+}
+
+async function saveGDriveIndex(index: CanvasMetadata[]) {
+  gdriveIndex = index;
+  await saveToDrive('canvas_index.json', JSON.stringify(index));
+}
+
+async function migrateLocalDataToDrive() {
+  const localIds = getAllLocalCanvasIds();
+  if (localIds.length === 0) return;
+  
+  const confirmMigrate = confirm(`ローカルに ${localIds.length} 件のデータがあります。Googleドライブへアップロード（同期）しますか？`);
+  if (!confirmMigrate) return;
+  
+  const index = await getGDriveIndex();
+  const gdriveStatusEl = document.getElementById('gdrive-status');
+  if (gdriveStatusEl) gdriveStatusEl.textContent = 'マイグレーション中...';
+  
+  for (const id of localIds) {
+    const saveData = loadCanvas(id);
+    if (!saveData) continue;
+    
+    // Upload file
+    const fileId = await saveToDrive(`${id}.json`, JSON.stringify(saveData));
+    
+    let thumbnail = '';
+    if (saveData.layers && saveData.layers.length > 0) {
+      thumbnail = saveData.layers[0].data; // Bottom layer as thumbnail
+    }
+    
+    const existingIdx = index.findIndex(m => m.id === id);
+    const meta: CanvasMetadata = {
+      id,
+      name: saveData.name || '無題のキャンバス',
+      updatedAt: saveData.updatedAt || new Date().toISOString(),
+      thumbnail,
+      gdriveFileId: fileId
+    };
+    
+    if (existingIdx >= 0) {
+      index[existingIdx] = meta;
+    } else {
+      index.push(meta);
+    }
+  }
+  
+  await saveGDriveIndex(index);
+  localIds.forEach(id => deleteLocalCanvas(id));
+  
+  showToast('マイグレーション完了');
+  if (gdriveStatusEl) gdriveStatusEl.textContent = '同期完了しました';
+  setTimeout(updateGDriveStatusUI, 2000);
+}
+
+function updateGDriveStatusUI() {
+  const gdriveStatusEl = document.getElementById('gdrive-status');
+  const btnGDriveConnect = document.getElementById('btn-gdrive-connect') as HTMLButtonElement;
+  if (!gdriveStatusEl || !btnGDriveConnect) return;
+  
+  if (isGDriveConnected()) {
+    const user = getGDriveUserInfo();
+    gdriveStatusEl.textContent = `接続中 (${user?.email || 'Unknown'})`;
+    gdriveStatusEl.style.color = '#34A853';
+    btnGDriveConnect.textContent = '同期完了';
+    btnGDriveConnect.disabled = true;
+  } else {
+    gdriveStatusEl.textContent = '未接続';
+    gdriveStatusEl.style.color = 'var(--muted-foreground)';
+    btnGDriveConnect.textContent = 'ドライブと接続';
+    btnGDriveConnect.disabled = false;
+  }
+}
 
 // ===================================================================
 // HTML
@@ -25,8 +128,24 @@ app.innerHTML = `
       <button id="btn-new-canvas" class="start-button">
         <i data-lucide="plus"></i> 新規作成
       </button>
-      <div id="storage-info" class="storage-info"></div>
-      <div id="saved-canvases-list" class="saved-canvases-list"></div>
+
+      <div class="gdrive-settings" style="margin-top: 20px; background: var(--secondary); padding: 16px; border-radius: 8px;">
+        <h3 style="margin-top: 0; margin-bottom: 12px; font-size: 14px; font-weight: bold; display: flex; align-items: center; gap: 6px;">
+          <i data-lucide="cloud"></i> Google ドライブ連携
+        </h3>
+        <div class="start-settings-row">
+          <label>クライアントID</label>
+          <input type="text" id="gdrive-client-id" placeholder="OAuth Client ID" style="font-size: 12px;" />
+        </div>
+        <div class="button-row" style="margin-top: 12px; display: flex; gap: 8px;">
+          <button id="btn-save-gdrive-creds" class="start-button secondary" style="flex: 1; height: 32px; font-size: 12px;">保存</button>
+          <button id="btn-gdrive-connect" class="start-button" style="flex: 1; height: 32px; font-size: 12px; background: #4285F4; color: white;">ドライブと接続</button>
+        </div>
+        <div id="gdrive-status" style="margin-top: 8px; font-size: 12px; color: var(--muted-foreground);">未接続</div>
+      </div>
+
+      <div id="storage-info" class="storage-info" style="margin-top: 20px;"></div>
+      <div id="saved-canvases-list" class="saved-canvases-list" style="margin-top: 12px;"></div>
     </div>
   </div>
 
@@ -371,6 +490,11 @@ function finalizeReorder() {
   
   if (orderChanged) {
     const prevOrder = [...currentOrderIds];
+    const prevClippedStates: { [layerId: number]: boolean } = {};
+    layers.forEach(l => {
+      prevClippedStates[l.id] = l.clipped;
+    });
+
     layers.sort((a, b) => newOrderIds.indexOf(a.id) - newOrderIds.indexOf(b.id));
     
     // Bottom-most layer cannot be clipped
@@ -378,10 +502,17 @@ function finalizeReorder() {
       layers[0].clipped = false;
     }
     
+    const clippedStates: { [layerId: number]: boolean } = {};
+    layers.forEach(l => {
+      clippedStates[l.id] = l.clipped;
+    });
+
     pushUndo({
       type: 'reorderLayers',
       layersOrder: [...newOrderIds],
-      prevLayersOrder: prevOrder
+      prevLayersOrder: prevOrder,
+      clippedStates,
+      prevClippedStates
     });
     
     compositeAndDisplay();
@@ -622,6 +753,8 @@ interface ReorderLayersUndoEntry {
   type: 'reorderLayers';
   layersOrder: number[];
   prevLayersOrder: number[];
+  clippedStates?: { [layerId: number]: boolean };
+  prevClippedStates?: { [layerId: number]: boolean };
 }
 
 interface ToggleClipUndoEntry {
@@ -721,10 +854,22 @@ function performUndo() {
     case 'reorderLayers': {
       const order = entry.prevLayersOrder;
       layers.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+      
+      // Restore previous clipped states if available
+      if (entry.prevClippedStates) {
+        layers.forEach(l => {
+          if (entry.prevClippedStates![l.id] !== undefined) {
+            l.clipped = entry.prevClippedStates![l.id];
+          }
+        });
+      }
+
       redoStack.push({
         type: 'reorderLayers',
-        layersOrder: entry.prevLayersOrder,
-        prevLayersOrder: entry.layersOrder
+        layersOrder: entry.layersOrder,
+        prevLayersOrder: entry.prevLayersOrder,
+        clippedStates: entry.clippedStates,
+        prevClippedStates: entry.prevClippedStates
       });
       renderLayerList();
       break;
@@ -817,10 +962,22 @@ function performRedo() {
     case 'reorderLayers': {
       const order = entry.layersOrder;
       layers.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+
+      // Restore clipped states if available
+      if (entry.clippedStates) {
+        layers.forEach(l => {
+          if (entry.clippedStates![l.id] !== undefined) {
+            l.clipped = entry.clippedStates![l.id];
+          }
+        });
+      }
+
       undoStack.push({
         type: 'reorderLayers',
-        layersOrder: entry.prevLayersOrder,
-        prevLayersOrder: entry.layersOrder
+        layersOrder: entry.layersOrder,
+        prevLayersOrder: entry.prevLayersOrder,
+        clippedStates: entry.clippedStates,
+        prevClippedStates: entry.prevClippedStates
       });
       renderLayerList();
       break;
@@ -1004,7 +1161,7 @@ document.addEventListener('click', (e) => {
   }
 });
 
-btnSave.addEventListener('click', () => {
+btnSave.addEventListener('click', async () => {
   if (!currentCanvasId) {
     currentCanvasId = generateNewCanvasId();
   }
@@ -1028,11 +1185,42 @@ btnSave.addEventListener('click', () => {
     layers: layerData
   };
   
-  if (saveCanvas(saveData)) {
-    showToast('Saved successfully');
-    renderStartScreen(); // Update list in background
+  if (isGDriveConnected()) {
+    showToast('Google ドライブへ保存中...');
+    try {
+      const fileId = await saveToDrive(`${currentCanvasId}.json`, JSON.stringify(saveData));
+      let thumbnail = '';
+      if (saveData.layers && saveData.layers.length > 0) {
+        thumbnail = saveData.layers[0].data;
+      }
+      const index = await getGDriveIndex();
+      const existingIdx = index.findIndex(m => m.id === currentCanvasId);
+      const meta: CanvasMetadata = {
+        id: currentCanvasId as string,
+        name: saveData.name || '無題のキャンバス',
+        updatedAt: saveData.updatedAt || new Date().toISOString(),
+        thumbnail,
+        gdriveFileId: fileId
+      };
+      if (existingIdx >= 0) {
+        index[existingIdx] = meta;
+      } else {
+        index.push(meta);
+      }
+      await saveGDriveIndex(index);
+      
+      showToast('Saved to Google Drive');
+      renderStartScreen();
+    } catch (err: any) {
+      showToast(`Drive Save Error: ${err.message}`);
+    }
   } else {
-    showToast('Failed to save (Storage full)');
+    if (saveCanvas(saveData)) {
+      showToast('Saved locally');
+      renderStartScreen();
+    } else {
+      showToast('Failed to save (Storage full)');
+    }
   }
 });
 
@@ -1475,11 +1663,24 @@ function initNewCanvas() {
   updateViewTransform();
 }
 
-function loadSavedCanvas(id: string) {
-  const data = loadCanvas(id);
-  if (!data) {
-    alert('キャンバスの読み込みに失敗しました');
-    return;
+async function loadSavedCanvas(id: string, gdriveFileId?: string) {
+  let data: SaveData | null = null;
+  if (isGDriveConnected() && gdriveFileId) {
+    showToast('Google ドライブから読み込み中...');
+    try {
+      const content = await downloadDriveFile(gdriveFileId);
+      data = JSON.parse(content) as SaveData;
+    } catch (e) {
+      console.error('Failed to load from GDrive', e);
+      alert('Google ドライブからの読み込みに失敗しました');
+      return;
+    }
+  } else {
+    data = loadCanvas(id);
+    if (!data) {
+      alert('キャンバスの読み込みに失敗しました');
+      return;
+    }
   }
   
   currentCanvasId = data.id;
@@ -1530,7 +1731,7 @@ function loadSavedCanvas(id: string) {
   updateViewTransform();
 }
 
-function renderStartScreen() {
+async function renderStartScreen() {
   const usage = getStorageUsage();
   storageInfoEl.innerHTML = `
     <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
@@ -1544,16 +1745,32 @@ function renderStartScreen() {
 
   const btnClearStorage = document.getElementById('btn-clear-storage');
   if (btnClearStorage) {
-    btnClearStorage.addEventListener('click', () => {
+    btnClearStorage.addEventListener('click', async () => {
       const confirmClear = confirm("本当にすべてのキャンバスデータを削除しますか？\nこの操作は取り消せません。");
       if (confirmClear) {
+        if (isGDriveConnected()) {
+          const index = await getGDriveIndex();
+          showToast('Google ドライブから全削除中...');
+          for (const meta of index) {
+            if (meta.gdriveFileId) {
+              await deleteDriveFile(meta.gdriveFileId);
+            }
+          }
+          await saveGDriveIndex([]);
+        }
         clearAllCanvases();
         renderStartScreen();
       }
     });
   }
 
-  const saves = getSavedCanvasesMetadata();
+  let saves: CanvasMetadata[] = [];
+  if (isGDriveConnected()) {
+    saves = await getGDriveIndex();
+    saves.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  } else {
+    saves = getSavedCanvasesMetadata();
+  }
   if (saves.length === 0) {
     savedCanvasesListEl.innerHTML = '<p style="text-align: center; color: var(--muted-foreground); font-size: 14px; margin-top: 24px;">保存されたキャンバスはありません</p>';
   } else {
@@ -1561,7 +1778,7 @@ function renderStartScreen() {
     saves.forEach(save => {
       const date = new Date(save.updatedAt).toLocaleString();
       html += `
-        <div class="canvas-item" data-id="${save.id}">
+        <div class="canvas-item" data-id="${save.id}" data-gdrive-id="${save.gdriveFileId || ''}">
           <div class="canvas-item-info">
             <span class="canvas-item-name">${save.name}</span>
             <span class="canvas-item-date">${date}</span>
@@ -1576,8 +1793,9 @@ function renderStartScreen() {
     items.forEach(item => {
       item.addEventListener('click', () => {
         const id = item.getAttribute('data-id');
+        const gdriveId = item.getAttribute('data-gdrive-id');
         if (id) {
-          loadSavedCanvas(id);
+          loadSavedCanvas(id, gdriveId || undefined);
         }
       });
     });
@@ -1602,8 +1820,55 @@ if (startWInput && startHInput) {
   startHInput.value = window.innerHeight.toString();
 }
 
+
 // Initial render
 renderStartScreen();
+
+// GDrive Init
+const gdriveClientIdInput = document.getElementById('gdrive-client-id') as HTMLInputElement;
+const btnSaveGDriveCreds = document.getElementById('btn-save-gdrive-creds') as HTMLButtonElement;
+const btnGDriveConnect = document.getElementById('btn-gdrive-connect') as HTMLButtonElement;
+const gdriveStatusEl = document.getElementById('gdrive-status') as HTMLDivElement;
+
+if (gdriveClientIdInput) {
+  gdriveClientIdInput.value = localStorage.getItem('gdrive_client_id') || '';
+}
+
+if (btnSaveGDriveCreds) {
+  btnSaveGDriveCreds.addEventListener('click', () => {
+    localStorage.setItem('gdrive_client_id', gdriveClientIdInput.value.trim());
+    showToast('クライアントIDを保存しました');
+  });
+}
+
+if (btnGDriveConnect) {
+  btnGDriveConnect.addEventListener('click', async () => {
+    const clientId = gdriveClientIdInput.value.trim();
+    if (!clientId) {
+      alert('クライアントIDを入力してください');
+      return;
+    }
+    localStorage.setItem('gdrive_client_id', clientId);
+    
+    if (gdriveStatusEl) gdriveStatusEl.textContent = '接続中...';
+    try {
+      await initAndLoginGDrive(clientId);
+      updateGDriveStatusUI();
+      showToast('Google ドライブに接続しました');
+      
+      await migrateLocalDataToDrive();
+      
+      renderStartScreen();
+    } catch (err: any) {
+      if (gdriveStatusEl) {
+        gdriveStatusEl.textContent = `エラー: ${err.message}`;
+        gdriveStatusEl.style.color = 'red';
+      }
+    }
+  });
+}
+updateGDriveStatusUI();
+
 
 // ===================================================================
 // Disable iOS Safari page zoom (viewport zoom) & double-tap zoom

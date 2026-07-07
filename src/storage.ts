@@ -22,6 +22,22 @@ export interface CanvasMetadata {
   name: string;
   updatedAt: string;
   thumbnail?: string; // Optional: background layer as thumbnail
+  gdriveFileId?: string; // If synced to Google Drive
+}
+
+export function getAllLocalCanvasIds(): string[] {
+  const ids: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith('paint_canvas_')) {
+      ids.push(key);
+    }
+  }
+  return ids;
+}
+
+export function deleteLocalCanvas(id: string): void {
+  localStorage.removeItem(id);
 }
 
 const STORAGE_PREFIX = 'paint_canvas_';
