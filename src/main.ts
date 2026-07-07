@@ -1046,10 +1046,38 @@ btnDownload.addEventListener('click', () => {
   tempCtx.fillStyle = '#ffffff';
   tempCtx.fillRect(0, 0, canvasLogicalW, canvasLogicalH);
   
-  // Draw visible layers in order (bottom to top)
-  for (const layer of layers) {
-    if (!layer.visible) continue;
-    tempCtx.drawImage(layer.canvas, 0, 0, canvasLogicalW, canvasLogicalH);
+  const tempGroupCanvas = document.createElement('canvas');
+  tempGroupCanvas.width = canvasLogicalW;
+  tempGroupCanvas.height = canvasLogicalH;
+  const tempGroupCtx = tempGroupCanvas.getContext('2d')!;
+
+  // Draw visible layers bottom-to-top with clipping masks
+  for (let i = 0; i < layers.length; i++) {
+    const layer = layers[i];
+    const isClipped = layer.clipped;
+    const nextIsClipped = (i + 1 < layers.length) && layers[i + 1].clipped;
+
+    if (isClipped) {
+      if (layer.visible) {
+        tempGroupCtx.globalCompositeOperation = 'source-atop';
+        tempGroupCtx.drawImage(layer.canvas, 0, 0, canvasLogicalW, canvasLogicalH);
+      }
+      if (!nextIsClipped) {
+        tempCtx.drawImage(tempGroupCanvas, 0, 0);
+      }
+    } else {
+      if (nextIsClipped) {
+        tempGroupCtx.clearRect(0, 0, canvasLogicalW, canvasLogicalH);
+        if (layer.visible) {
+          tempGroupCtx.globalCompositeOperation = 'source-over';
+          tempGroupCtx.drawImage(layer.canvas, 0, 0, canvasLogicalW, canvasLogicalH);
+        }
+      } else {
+        if (layer.visible) {
+          tempCtx.drawImage(layer.canvas, 0, 0, canvasLogicalW, canvasLogicalH);
+        }
+      }
+    }
   }
   
   const dataUrl = tempCanvas.toDataURL('image/png');
