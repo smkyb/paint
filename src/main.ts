@@ -91,6 +91,9 @@ app.innerHTML = `
           <button id="btn-save" class="start-button" style="height: 36px; padding: 0 12px; width: 100%; white-space: nowrap;">
             <i data-lucide="save"></i> 保存
           </button>
+          <button id="btn-download" class="start-button" style="height: 36px; padding: 0 12px; width: 100%; white-space: nowrap; background-color: var(--secondary); color: var(--secondary-foreground);">
+            <i data-lucide="download"></i> PNG 保存
+          </button>
         </div>
       </div>
     </div>
@@ -123,6 +126,7 @@ const btnEraser = document.getElementById('btn-eraser') as HTMLButtonElement;
 const btnSettings = document.getElementById('btn-settings') as HTMLButtonElement;
 const settingsDropdown = document.getElementById('settings-dropdown') as HTMLDivElement;
 const btnSave = document.getElementById('btn-save') as HTMLButtonElement;
+const btnDownload = document.getElementById('btn-download') as HTMLButtonElement;
 const sizeSlider = document.getElementById('size-slider') as HTMLInputElement;
 const sizeValEl = document.getElementById('size-val') as HTMLSpanElement;
 
@@ -787,6 +791,30 @@ btnSave.addEventListener('click', () => {
   } else {
     showToast('Failed to save (Storage full)');
   }
+});
+
+btnDownload.addEventListener('click', () => {
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = canvasLogicalW;
+  tempCanvas.height = canvasLogicalH;
+  const tempCtx = tempCanvas.getContext('2d')!;
+  
+  // Fill background white
+  tempCtx.fillStyle = '#ffffff';
+  tempCtx.fillRect(0, 0, canvasLogicalW, canvasLogicalH);
+  
+  // Draw visible layers in order (bottom to top)
+  for (const layer of layers) {
+    if (!layer.visible) continue;
+    tempCtx.drawImage(layer.canvas, 0, 0, canvasLogicalW, canvasLogicalH);
+  }
+  
+  const dataUrl = tempCanvas.toDataURL('image/png');
+  const link = document.createElement('a');
+  link.download = `${currentCanvasId ? currentCanvasId.replace('paint_canvas_', 'canvas_') : 'canvas'}.png`;
+  link.href = dataUrl;
+  link.click();
+  showToast('PNG Downloaded');
 });
 
 sizeSlider.addEventListener('input', (e) => {
