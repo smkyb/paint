@@ -47,9 +47,12 @@ input, textarea {
 }
 
 #app {
-  width: 100vw;
-  height: 100vh;
-  position: relative;
+  width: 100%;
+  height: 100%;
+  position: fixed;
+  top: 0;
+  left: 0;
+  overflow: hidden;
 }
 
 /* Paint App Wrapper */
@@ -375,9 +378,17 @@ input[type="color"] {
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-  margin-top: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+.layer-actions-row button {
+  flex: 1;
+  padding: 10px 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .layer-panel-header {
@@ -386,8 +397,7 @@ input[type="color"] {
   align-items: center;
   font-size: 14px;
   font-weight: 600;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
 }
 
 .layer-list {

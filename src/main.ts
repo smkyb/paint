@@ -46,12 +46,12 @@ app.innerHTML = `
           <button id="btn-add-layer" title="Add layer" class="icon-btn sm"><i data-lucide="plus"></i></button>
         </div>
       </div>
-      <div class="layer-list" id="layer-list"></div>
       <div class="layer-actions-row">
         <button id="btn-active-clip" title="Toggle clipping mask" class="icon-btn sm"><i data-lucide="corner-down-right"></i></button>
         <button id="btn-active-fill" title="Fill layer elements with current color" class="icon-btn sm"><i data-lucide="palette"></i></button>
         <button id="btn-active-delete" title="Delete selected layer" class="icon-btn sm"><i data-lucide="trash-2"></i></button>
       </div>
+      <div class="layer-list" id="layer-list"></div>
     </div>
 
     <div class="toolbar panel-card">
@@ -1562,6 +1562,14 @@ btnNewCanvas.addEventListener('click', () => {
   paintApp.style.display = 'flex';
   initNewCanvas();
 });
+
+// Pre-fill width and height with visible screen sizes on load
+const startWInput = document.getElementById('start-canvas-w') as HTMLInputElement;
+const startHInput = document.getElementById('start-canvas-h') as HTMLInputElement;
+if (startWInput && startHInput) {
+  startWInput.value = window.innerWidth.toString();
+  startHInput.value = window.innerHeight.toString();
+}
 
 // Initial render
 renderStartScreen();
