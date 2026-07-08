@@ -358,21 +358,21 @@ input[type="color"] {
 /* ===== Layer Panel ===== */
 .layer-panel {
   position: absolute;
-  top: 80px;
-  left: 24px;
-  width: 160px;
-  max-height: calc(100vh - 180px);
-  padding: 12px;
+  top: 0;
+  left: 0;
+  width: 180px;
+  height: 100%;
+  max-height: 100%;
+  padding: 24px 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  overflow-y: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-.layer-panel::-webkit-scrollbar {
-  display: none;
+  overflow: hidden;
+  border-radius: 0;
+  border-top: none;
+  border-bottom: none;
+  border-left: none;
+  box-sizing: border-box;
 }
 
 .layer-actions-row {
@@ -406,6 +406,14 @@ input[type="color"] {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.layer-list::-webkit-scrollbar {
+  display: none;
 }
 
 .layer-item {
@@ -693,7 +701,7 @@ input[type="color"] {
 .back-to-start-btn {
   position: absolute;
   top: 24px;
-  left: 24px;
+  right: 24px;
   z-index: 100;
   width: 40px;
   height: 40px;
@@ -732,7 +740,7 @@ input[type="color"] {
 .gdrive-sync-indicator {
   position: fixed;
   top: 24px;
-  right: 24px;
+  right: 80px;
   background-color: rgba(39, 39, 42, 0.9); /* zinc-800 translucent */
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);

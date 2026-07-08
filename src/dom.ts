@@ -118,15 +118,9 @@ app.innerHTML = `
         </div>
 
         <div class="oklch-inputs">
-          <div class="oklch-row">
-            <label>L</label> <input type="number" id="oklch-l" step="0.01" min="0" max="1" />
-          </div>
-          <div class="oklch-row">
-            <label>C</label> <input type="number" id="oklch-c" step="0.01" min="0" max="0.4" />
-          </div>
-          <div class="oklch-row">
-            <label>H</label> <input type="number" id="oklch-h" step="1" min="0" max="360" />
-          </div>
+          <button id="btn-shift-color" class="icon-btn" title="色を相対シフト (L-0.1, H±25, Cmax)" style="width: 36px; height: 36px; padding: 0; display: inline-flex; align-items: center; justify-content: center; background-color: transparent; border: none; border-radius: calc(var(--radius) - 2px);">
+            <i data-lucide="sparkles" style="width: 18px; height: 18px;"></i>
+          </button>
         </div>
       </div>
 
@@ -184,9 +178,7 @@ export const sizeValEl = document.getElementById('size-val') as HTMLSpanElement;
 
 export const colorPreview = document.getElementById('color-preview') as HTMLDivElement;
 export const colorInput = document.getElementById('color-input') as HTMLInputElement;
-export const oklchL = document.getElementById('oklch-l') as HTMLInputElement;
-export const oklchC = document.getElementById('oklch-c') as HTMLInputElement;
-export const oklchH = document.getElementById('oklch-h') as HTMLInputElement;
+export const btnShiftColor = document.getElementById('btn-shift-color') as HTMLButtonElement;
 
 export const stabSlider = document.getElementById('stab-slider') as HTMLInputElement;
 export const stabValEl = document.getElementById('stab-val') as HTMLSpanElement;

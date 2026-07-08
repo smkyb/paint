@@ -1,7 +1,7 @@
 import Color from 'colorjs.io';
 import type { Point } from './types';
 import { currentTool, currentColor, setCurrentColor, currentSize, setCurrentSize, setCurrentTool, isDrawing, anchorPoint, lastInputPoint, lastRenderPos, lastInputTime, positionSmoothing, lazyRadius, setAnchorPoint, setLastInputPoint, setLastRenderPos, setLastInputTime, setLazyRadius, layers, activeLayerId, canvasLogicalW, canvasLogicalH, viewScale, viewOffsetX, viewOffsetY, viewRotation } from './state';
-import { colorPreview, colorInput, oklchL, oklchC, oklchH, sizeSlider, sizeValEl, stabSlider, stabValEl, btnToggleTool, container } from './dom';
+import { colorPreview, colorInput, btnShiftColor, sizeSlider, sizeValEl, stabSlider, stabValEl, btnToggleTool, container } from './dom';
 import { compositeAndDisplay } from './canvas';
 import { saveUndoState, showToast } from './undo';
 
@@ -15,7 +15,7 @@ export function getMaxChromaColor(h: number): string {
   }
   let maxC = 0;
   let bestL = 0.7;
-  for (let l = 0.2; l <= 0.9; l += 0.05) {
+  for (let l = 0; l <= 1.0; l += 0.05) { // broad scan range 0 to 1
     let low = 0;
     let high = 0.4;
     let fitC = 0;
@@ -44,27 +44,57 @@ export function updateColorDisplay(c: InstanceType<typeof Color>) {
   setCurrentColor(c.toString({ format: "hex" }));
   colorInput.value = currentColor;
   colorPreview.style.backgroundColor = currentColor;
-
-  const oklch = c.to('oklch');
-  const l = oklch.coords[0];
-  const chr = oklch.coords[1];
-  const h = oklch.coords[2];
-  oklchL.value = (typeof l === 'number' && !isNaN(l)) ? l.toFixed(3) : "0";
-  oklchC.value = (typeof chr === 'number' && !isNaN(chr)) ? chr.toFixed(3) : "0";
-  oklchH.value = (typeof h === 'number' && !isNaN(h)) ? h.toFixed(1) : "0";
 }
 
-export function handleOklchInput() {
+export function shiftCurrentColor() {
   try {
-    const l = parseFloat(oklchL.value) || 0;
-    const c = parseFloat(oklchC.value) || 0;
-    const h = parseFloat(oklchH.value) || 0;
-    const color = new Color('oklch', [l, c, h]);
-    setCurrentColor(color.to('srgb').toString({ format: "hex" }));
-    colorInput.value = currentColor;
-    colorPreview.style.backgroundColor = currentColor;
+    const color = new Color(currentColor);
+    const oklch = color.to('oklch');
+    let l = oklch.coords[0] ?? 0;
+    let h = oklch.coords[2] ?? 0;
+
+    // L -= 0.10
+    l = Math.max(0, l - 0.10);
+
+    // H += 25 (30と264のうち近い向きへ移動)
+    h = (h % 360 + 360) % 360;
+    
+    const dist30 = (30 - h + 360) % 360;
+    const absDist30 = dist30 <= 180 ? dist30 : 360 - dist30;
+
+    const dist264 = (264 - h + 360) % 360;
+    const absDist264 = dist264 <= 180 ? dist264 : 360 - dist264;
+
+    let hDirection = 1; // 1: +25, -1: -25
+    if (absDist30 < absDist264) {
+      hDirection = dist30 <= 180 ? 1 : -1;
+    } else {
+      hDirection = dist264 <= 180 ? 1 : -1;
+    }
+
+    let newH = (h + hDirection * 25) % 360;
+    if (newH < 0) newH += 360;
+
+    // CはLとHが定まった中で取りうる最大値
+    let low = 0;
+    let high = 0.4;
+    let fitC = 0;
+    for (let step = 0; step < 15; step++) {
+      const mid = (low + high) / 2;
+      const col = new Color('oklch', [l, mid, newH]);
+      if (col.inGamut('srgb')) {
+        fitC = mid;
+        low = mid;
+      } else {
+        high = mid;
+      }
+    }
+    const c = fitC;
+
+    const newColor = new Color('oklch', [l, c, newH]);
+    updateColorDisplay(newColor);
   } catch (err) {
-    console.error(err);
+    console.error('Failed to shift color', err);
   }
 }
 
@@ -210,9 +240,9 @@ export function initDrawingListeners() {
     updateColorDisplay(new Color((e.target as HTMLInputElement).value));
   });
 
-  oklchL.addEventListener('input', handleOklchInput);
-  oklchC.addEventListener('input', handleOklchInput);
-  oklchH.addEventListener('input', handleOklchInput);
+  if (btnShiftColor) {
+    btnShiftColor.addEventListener('click', shiftCurrentColor);
+  }
 
   btnToggleTool.addEventListener('click', () => {
     if (currentTool === 'pen') {
