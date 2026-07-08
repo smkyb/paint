@@ -609,6 +609,8 @@ input[type="color"] {
 .canvas-item-info { display: flex; flex-direction: column; gap: 4px; flex-grow: 1; }
 .canvas-item-name { font-size: 14px; font-weight: 500; color: var(--foreground); }
 .canvas-item-date { font-size: 12px; color: var(--muted-foreground); }
+.canvas-item-delete { background: transparent; color: var(--muted-foreground); border: none; cursor: pointer; padding: 6px; border-radius: 4px; transition: background 0.2s, color 0.2s; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.canvas-item-delete:hover { background: var(--destructive) !important; color: var(--destructive-foreground) !important; }
 .storage-info { margin-top: 16px; font-size: 12px; color: var(--muted-foreground); text-align: center; display: flex; flex-direction: column; gap: 4px; }
 .storage-bar { width: 100%; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
 .storage-bar-fill { height: 100%; background: var(--primary); transition: width 0.3s ease; }

@@ -1,7 +1,7 @@
 import Color from 'colorjs.io';
 import type { Layer } from './types';
 import type { SaveData, LayerData, CanvasMetadata } from './storage';
-import { getStorageUsage, getSavedCanvasesMetadata, saveCanvas, loadCanvas, clearAllCanvases } from './storage';
+import { getStorageUsage, getSavedCanvasesMetadata, saveCanvas, loadCanvas, clearAllCanvases, deleteLocalCanvas } from './storage';
 import { isGDriveConnected, downloadDriveFile, deleteDriveFile, saveToDrive } from './gdrive';
 import { layers, activeLayerId, nextLayerId, setActiveLayerId, setNextLayerId, canvasLogicalW, canvasLogicalH, currentCanvasId, setCurrentCanvasId, setViewOffsetX, setViewOffsetY, undoStack, redoStack } from './state';
 import { startScreen, paintApp, btnNewCanvas, storageInfoEl, savedCanvasesListEl, btnSettings, settingsDropdown, btnSave, btnDownload, btnBackToStart, displayCanvas, container } from './dom';
@@ -176,6 +176,9 @@ async function renderStartScreen() {
             <span class="canvas-item-name">${save.name}</span>
             <span class="canvas-item-date">${date}</span>
           </div>
+          <button class="canvas-item-delete" title="削除">
+            <i data-lucide="trash-2" style="width:16px; height:16px;"></i>
+          </button>
           <i data-lucide="chevron-right" style="width:16px; height:16px; color: var(--muted-foreground);"></i>
         </div>
       `;
@@ -191,6 +194,36 @@ async function renderStartScreen() {
           loadSavedCanvas(id, gdriveId || undefined);
         }
       });
+
+      const btnDelete = item.querySelector('.canvas-item-delete');
+      if (btnDelete) {
+        btnDelete.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const id = item.getAttribute('data-id')!;
+          const gdriveId = item.getAttribute('data-gdrive-id');
+          const name = item.querySelector('.canvas-item-name')?.textContent || '無題のキャンバス';
+
+          const confirmClear = confirm(`本当にキャンバス「${name}」を削除しますか？\nこの操作は取り消せません。`);
+          if (confirmClear) {
+            if (isGDriveConnected() && gdriveId) {
+              showToast('Google ドライブから削除中...');
+              try {
+                await deleteDriveFile(gdriveId);
+                const index = await getGDriveIndex();
+                const newIndex = index.filter(m => m.id !== id);
+                await saveGDriveIndex(newIndex);
+                showToast('削除しました');
+              } catch (err: any) {
+                showToast(`削除に失敗しました: ${err.message}`);
+              }
+            } else {
+              deleteLocalCanvas(id);
+              showToast('削除しました');
+            }
+            renderStartScreen();
+          }
+        });
+      }
     });
   }
   
