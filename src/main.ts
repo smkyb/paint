@@ -118,9 +118,8 @@ async function loadSavedCanvas(id: string, gdriveFileId?: string) {
   updateViewTransform();
 }
 
-// ===================================================================
-// Start Screen Rendering
-// ===================================================================
+let deleteQueue = Promise.resolve();
+
 async function renderStartScreen() {
   const usage = getStorageUsage();
   storageInfoEl.innerHTML = `
@@ -214,25 +213,29 @@ async function renderStartScreen() {
 
           const confirmClear = confirm(`本当にキャンバス「${name}」を削除しますか？\nこの操作は取り消せません。`);
           if (confirmClear) {
-            if (isGDriveConnected() && gdriveId) {
-              showToast('Google ドライブから削除中...');
-              setIsGDriveWriting(true);
-              try {
-                await deleteDriveFile(gdriveId);
-                const index = await getGDriveIndex();
-                const newIndex = index.filter(m => m.id !== id);
-                await saveGDriveIndex(newIndex);
+            deleteQueue = deleteQueue.then(async () => {
+              if (isGDriveConnected() && gdriveId) {
+                showToast('Google ドライブから削除中...');
+                setIsGDriveWriting(true);
+                try {
+                  await deleteDriveFile(gdriveId);
+                  const index = await getGDriveIndex();
+                  const newIndex = index.filter(m => m.id !== id);
+                  await saveGDriveIndex(newIndex);
+                  showToast('削除しました');
+                } catch (err: any) {
+                  showToast(`削除に失敗しました: ${err.message}`);
+                } finally {
+                  setIsGDriveWriting(false);
+                }
+              } else {
+                deleteLocalCanvas(id);
                 showToast('削除しました');
-              } catch (err: any) {
-                showToast(`削除に失敗しました: ${err.message}`);
-              } finally {
-                setIsGDriveWriting(false);
               }
-            } else {
-              deleteLocalCanvas(id);
-              showToast('削除しました');
-            }
-            renderStartScreen();
+              await renderStartScreen();
+            }).catch(err => {
+              console.error('Queue deletion error:', err);
+            });
           }
         });
       }
