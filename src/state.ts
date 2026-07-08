@@ -87,3 +87,22 @@ export let groupCanvas: HTMLCanvasElement | null = null;
 export let groupCtx: CanvasRenderingContext2D | null = null;
 export function setGroupCanvas(c: HTMLCanvasElement | null) { groupCanvas = c; }
 export function setGroupCtx(ctx: CanvasRenderingContext2D | null) { groupCtx = ctx; }
+
+// GDrive writing state for beforeunload check and UI indicator
+export let isGDriveWriting = false;
+export function setIsGDriveWriting(val: boolean) {
+  isGDriveWriting = val;
+  const indicator = document.getElementById('gdrive-sync-indicator');
+  if (indicator) {
+    if (val) {
+      indicator.classList.add('show');
+    } else {
+      indicator.classList.remove('show');
+    }
+  }
+}
+
+// Track unsaved changes
+export let hasUnsavedChanges = false;
+export function setHasUnsavedChanges(val: boolean) { hasUnsavedChanges = val; }
+

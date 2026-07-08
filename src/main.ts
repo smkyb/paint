@@ -3,7 +3,7 @@ import type { Layer } from './types';
 import type { SaveData, LayerData, CanvasMetadata } from './storage';
 import { getStorageUsage, getSavedCanvasesMetadata, saveCanvas, loadCanvas, clearAllCanvases, deleteLocalCanvas } from './storage';
 import { isGDriveConnected, downloadDriveFile, deleteDriveFile, saveToDrive } from './gdrive';
-import { layers, activeLayerId, nextLayerId, setActiveLayerId, setNextLayerId, canvasLogicalW, canvasLogicalH, currentCanvasId, setCurrentCanvasId, setViewOffsetX, setViewOffsetY, undoStack, redoStack } from './state';
+import { layers, activeLayerId, nextLayerId, setActiveLayerId, setNextLayerId, canvasLogicalW, canvasLogicalH, currentCanvasId, setCurrentCanvasId, setViewOffsetX, setViewOffsetY, undoStack, redoStack, isGDriveWriting, setIsGDriveWriting, hasUnsavedChanges, setHasUnsavedChanges } from './state';
 import { startScreen, paintApp, btnNewCanvas, storageInfoEl, savedCanvasesListEl, btnSettings, settingsDropdown, btnSave, btnDownload, btnBackToStart, displayCanvas, container } from './dom';
 import { initCanvasSize, compositeAndDisplay, updateViewTransform, createLayerCanvas, generateThumbnail } from './canvas';
 import { addLayerInternal, getActiveLayer, renderLayerList, initLayerListeners } from './layers';
@@ -19,6 +19,7 @@ function initNewCanvas() {
   setCurrentCanvasId(null);
   undoStack.length = 0;
   redoStack.length = 0;
+  setHasUnsavedChanges(false);
   resetToolToPen();
   
   const startWInput = document.getElementById('start-canvas-w') as HTMLInputElement;
@@ -69,6 +70,7 @@ async function loadSavedCanvas(id: string, gdriveFileId?: string) {
   setCurrentCanvasId(data.id);
   undoStack.length = 0;
   redoStack.length = 0;
+  setHasUnsavedChanges(false);
   resetToolToPen();
   startScreen.style.display = 'none';
   paintApp.style.display = 'flex';
@@ -137,14 +139,21 @@ async function renderStartScreen() {
       const confirmClear = confirm("本当にすべてのキャンバスデータを削除しますか？\nこの操作は取り消せません。");
       if (confirmClear) {
         if (isGDriveConnected()) {
-          const index = await getGDriveIndex();
           showToast('Google ドライブから全削除中...');
-          for (const meta of index) {
-            if (meta.gdriveFileId) {
-              await deleteDriveFile(meta.gdriveFileId);
+          setIsGDriveWriting(true);
+          try {
+            const index = await getGDriveIndex();
+            for (const meta of index) {
+              if (meta.gdriveFileId) {
+                await deleteDriveFile(meta.gdriveFileId);
+              }
             }
+            await saveGDriveIndex([]);
+          } catch (err: any) {
+            showToast(`削除に失敗しました: ${err.message}`);
+          } finally {
+            setIsGDriveWriting(false);
           }
-          await saveGDriveIndex([]);
         }
         clearAllCanvases();
         renderStartScreen();
@@ -207,6 +216,7 @@ async function renderStartScreen() {
           if (confirmClear) {
             if (isGDriveConnected() && gdriveId) {
               showToast('Google ドライブから削除中...');
+              setIsGDriveWriting(true);
               try {
                 await deleteDriveFile(gdriveId);
                 const index = await getGDriveIndex();
@@ -215,6 +225,8 @@ async function renderStartScreen() {
                 showToast('削除しました');
               } catch (err: any) {
                 showToast(`削除に失敗しました: ${err.message}`);
+              } finally {
+                setIsGDriveWriting(false);
               }
             } else {
               deleteLocalCanvas(id);
@@ -251,69 +263,76 @@ document.addEventListener('click', (e) => {
 
 btnSave.addEventListener('click', async () => {
   let canvasId = currentCanvasId;
-  if (!canvasId) {
-    canvasId = await generateNewCanvasIdAsync();
-    setCurrentCanvasId(canvasId);
-  }
-  
-  const layerData: LayerData[] = layers.map(l => ({
-    id: l.id,
-    name: l.name,
-    visible: l.visible,
-    data: l.canvas.toDataURL('image/png'),
-    clipped: l.clipped
-  }));
-  
-  const thumbnailDataUrl = generateThumbnail(displayCanvas);
+  setIsGDriveWriting(true);
+  try {
+    if (!canvasId) {
+      canvasId = await generateNewCanvasIdAsync();
+      setCurrentCanvasId(canvasId);
+    }
+    
+    const layerData: LayerData[] = layers.map(l => ({
+      id: l.id,
+      name: l.name,
+      visible: l.visible,
+      data: l.canvas.toDataURL('image/png'),
+      clipped: l.clipped
+    }));
+    
+    const thumbnailDataUrl = generateThumbnail(displayCanvas);
 
-  const saveData: SaveData = {
-    version: 1,
-    id: canvasId,
-    name: '無題のキャンバス',
-    updatedAt: new Date().toISOString(),
-    canvas: { w: canvasLogicalW, h: canvasLogicalH },
-    activeLayerId,
-    nextLayerId,
-    layers: layerData,
-    thumbnail: thumbnailDataUrl
-  };
-  
-  if (isGDriveConnected()) {
-    showToast('Google ドライブへ保存中...');
-    try {
-      const fileId = await saveToDrive(`${canvasId}.json`, JSON.stringify(saveData));
-      let thumbnail = saveData.thumbnail || '';
-      if (!thumbnail && saveData.layers && saveData.layers.length > 0) {
-        thumbnail = saveData.layers[0].data;
+    const saveData: SaveData = {
+      version: 1,
+      id: canvasId,
+      name: '無題のキャンバス',
+      updatedAt: new Date().toISOString(),
+      canvas: { w: canvasLogicalW, h: canvasLogicalH },
+      activeLayerId,
+      nextLayerId,
+      layers: layerData,
+      thumbnail: thumbnailDataUrl
+    };
+    
+    if (isGDriveConnected()) {
+      showToast('Google ドライブへ保存中...');
+      try {
+        const fileId = await saveToDrive(`${canvasId}.json`, JSON.stringify(saveData));
+        let thumbnail = saveData.thumbnail || '';
+        if (!thumbnail && saveData.layers && saveData.layers.length > 0) {
+          thumbnail = saveData.layers[0].data;
+        }
+        const index = await getGDriveIndex();
+        const existingIdx = index.findIndex(m => m.id === canvasId);
+        const meta: CanvasMetadata = {
+          id: canvasId as string,
+          name: saveData.name || '無題のキャンバス',
+          updatedAt: saveData.updatedAt || new Date().toISOString(),
+          thumbnail,
+          gdriveFileId: fileId
+        };
+        if (existingIdx >= 0) {
+          index[existingIdx] = meta;
+        } else {
+          index.push(meta);
+        }
+        await saveGDriveIndex(index);
+        setHasUnsavedChanges(false);
+        
+        showToast('Google ドライブに保存しました');
+        renderStartScreen();
+      } catch (err: any) {
+        showToast(`保存に失敗しました: ${err.message}`);
       }
-      const index = await getGDriveIndex();
-      const existingIdx = index.findIndex(m => m.id === canvasId);
-      const meta: CanvasMetadata = {
-        id: canvasId as string,
-        name: saveData.name || '無題のキャンバス',
-        updatedAt: saveData.updatedAt || new Date().toISOString(),
-        thumbnail,
-        gdriveFileId: fileId
-      };
-      if (existingIdx >= 0) {
-        index[existingIdx] = meta;
-      } else {
-        index.push(meta);
-      }
-      await saveGDriveIndex(index);
-      
-      showToast('Google ドライブに保存しました');
-      renderStartScreen();
-    } catch (err: any) {
-      showToast(`保存に失敗しました: ${err.message}`);
-    }
-  } else {
-    if (saveCanvas(saveData)) {
-      showToast('ローカルに保存しました');
-      renderStartScreen();
     } else {
-      showToast('保存に失敗しました（ストレージ容量不足）');
+      if (saveCanvas(saveData)) {
+        setHasUnsavedChanges(false);
+        showToast('ローカルに保存しました');
+        renderStartScreen();
+      } else {
+        showToast('保存に失敗しました（ストレージ容量不足）');
+      }
     }
+  } finally {
+    setIsGDriveWriting(false);
   }
 });
 
@@ -384,7 +403,7 @@ if (startWInput && startHInput) {
 // Back to Start screen event listener
 if (btnBackToStart) {
   btnBackToStart.addEventListener('click', async () => {
-    if (undoStack.length > 0) {
+    if (hasUnsavedChanges) {
       const confirmBack = confirm("キャンバスを閉じてスタート画面に戻りますか？\n保存していない変更は失われます。");
       if (!confirmBack) return;
     }
@@ -392,6 +411,7 @@ if (btnBackToStart) {
     undoStack.length = 0;
     redoStack.length = 0;
     setCurrentCanvasId(null);
+    setHasUnsavedChanges(false);
     
     paintApp.style.display = 'none';
     startScreen.style.display = 'flex';
@@ -432,4 +452,13 @@ document.addEventListener('touchend', (e) => {
 // Disable right-click / long-press context menu globally
 document.addEventListener('contextmenu', (e) => {
   e.preventDefault();
+});
+
+// GDrive operation beforeunload alert
+window.addEventListener('beforeunload', (e) => {
+  if (isGDriveWriting) {
+    e.preventDefault();
+    e.returnValue = 'Google ドライブとの通信処理（書き込み）中です。ページを離れるとデータが破損する可能性があります。';
+    return e.returnValue;
+  }
 });

@@ -1,5 +1,5 @@
 import type { Layer, UndoEntry } from './types';
-import { layers, activeLayerId, setActiveLayerId, nextLayerId, setNextLayerId, undoStack, redoStack, MAX_UNDO } from './state';
+import { layers, activeLayerId, setActiveLayerId, nextLayerId, setNextLayerId, undoStack, redoStack, MAX_UNDO, setHasUnsavedChanges } from './state';
 import { undoToastEl } from './dom';
 import { createLayerCanvas, compositeAndDisplay } from './canvas';
 
@@ -11,6 +11,7 @@ export function pushUndo(entry: UndoEntry) {
   undoStack.push(entry);
   if (undoStack.length > MAX_UNDO) undoStack.shift();
   redoStack.length = 0;
+  setHasUnsavedChanges(true);
 }
 
 export function saveUndoState(layerId: number) {
@@ -23,6 +24,7 @@ export function saveUndoState(layerId: number) {
 export function performUndo() {
   const entry = undoStack.pop();
   if (!entry) return;
+  setHasUnsavedChanges(true);
 
   switch (entry.type) {
     case 'stroke': {
@@ -126,6 +128,7 @@ export function performUndo() {
 export function performRedo() {
   const entry = redoStack.pop();
   if (!entry) return;
+  setHasUnsavedChanges(true);
 
   switch (entry.type) {
     case 'stroke': {

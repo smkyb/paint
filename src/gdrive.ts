@@ -235,3 +235,14 @@ export async function saveToDrive(name: string, content: string): Promise<string
   const existingId = await findDriveFileId(name);
   return await uploadDriveFile(name, content, existingId);
 }
+
+// List all files in the 'PaintApp' folder (returns an array of { id: string, name: string })
+export async function listDriveFiles(): Promise<{ id: string; name: string }[]> {
+  const folderId = await getOrCreateFolderId();
+  const query = encodeURIComponent(`'${folderId}' in parents and trashed=false`);
+  const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`;
+  const res = await driveFetch(url);
+  const data = await res.json();
+  return data.files || [];
+}
+

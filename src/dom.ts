@@ -56,6 +56,18 @@ app.innerHTML = `
           </div>
           <div id="gdrive-status" style="margin-top: 8px; font-size: 12px; color: var(--muted-foreground);">未接続</div>
         </div>
+
+        <div class="maintenance-settings" style="background: var(--secondary); padding: 16px; border-radius: 8px; margin-top: 12px;">
+          <h3 style="margin-top: 0; margin-bottom: 12px; font-size: 14px; font-weight: bold; display: flex; align-items: center; gap: 6px;">
+            <i data-lucide="shield-alert"></i> データメンテナンス
+          </h3>
+          <p style="font-size: 11px; color: var(--muted-foreground); margin-top: 0; margin-bottom: 12px; line-height: 1.4; text-align: left;">
+            インデックスと実際のキャンバスファイルの不整合や、破損したデータをスキャンして削除・修復します。
+          </p>
+          <button id="btn-validate-files" class="start-button secondary" style="height: 32px; font-size: 12px; width: 100%;">
+            整合性をチェック & 修復
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -138,6 +150,11 @@ app.innerHTML = `
 
     <div class="undo-toast" id="undo-toast"></div>
   </div>
+
+  <div id="gdrive-sync-indicator" class="gdrive-sync-indicator">
+    <div class="spinner"></div>
+    <span>Google ドライブ同期中...</span>
+  </div>
 `;
 
 // Initialize standard icons
@@ -182,3 +199,4 @@ export const layerListEl = document.getElementById('layer-list') as HTMLDivEleme
 export const layerPanelEl = document.getElementById('layer-panel') as HTMLDivElement;
 export const undoToastEl = document.getElementById('undo-toast') as HTMLDivElement;
 export const btnBackToStart = document.getElementById('btn-back-to-start') as HTMLButtonElement;
+export const btnValidateFiles = document.getElementById('btn-validate-files') as HTMLButtonElement;
