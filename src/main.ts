@@ -4,7 +4,7 @@ import type { SaveData, LayerData, CanvasMetadata } from './storage';
 import { getStorageUsage, getSavedCanvasesMetadata, saveCanvas, loadCanvas, clearAllCanvases, deleteLocalCanvas } from './storage';
 import { isGDriveConnected, downloadDriveFile, deleteDriveFile, saveToDrive } from './gdrive';
 import { layers, activeLayerId, nextLayerId, setActiveLayerId, setNextLayerId, canvasLogicalW, canvasLogicalH, currentCanvasId, setCurrentCanvasId, setViewOffsetX, setViewOffsetY, undoStack, redoStack, isGDriveWriting, setIsGDriveWriting, hasUnsavedChanges, setHasUnsavedChanges } from './state';
-import { startScreen, paintApp, btnNewCanvas, storageInfoEl, savedCanvasesListEl, btnSettings, settingsDropdown, btnSave, btnDownload, btnBackToStart, displayCanvas, container } from './dom';
+import { startScreen, paintApp, btnNewCanvas, storageInfoEl, savedCanvasesListEl, btnSettings, settingsDropdown, btnSave, btnDownload, btnBackToStart, displayCanvas, container, btnClearStorage } from './dom';
 import { initCanvasSize, compositeAndDisplay, updateViewTransform, createLayerCanvas, generateThumbnail } from './canvas';
 import { addLayerInternal, getActiveLayer, renderLayerList, initLayerListeners } from './layers';
 import { showToast } from './undo';
@@ -125,40 +125,9 @@ async function renderStartScreen() {
   storageInfoEl.innerHTML = `
     <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
       <span>Storage Usage: ${(usage.usedKB / 1024).toFixed(2)}MB / ${(usage.maxKB / 1024).toFixed(2)}MB (${usage.percentage}%)</span>
-      <button id="btn-clear-storage" class="icon-btn" style="color: var(--destructive); cursor: pointer; background: transparent; border: none; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: var(--radius); font-size: 11px;" title="Clear Storage">
-        <i data-lucide="trash-2" style="width:14px; height:14px;"></i> Clear All
-      </button>
     </div>
     <div class="storage-bar"><div class="storage-bar-fill" style="width: ${usage.percentage}%"></div></div>
   `;
-
-  const btnClearStorage = document.getElementById('btn-clear-storage');
-  if (btnClearStorage) {
-    btnClearStorage.addEventListener('click', async () => {
-      const confirmClear = confirm("本当にすべてのキャンバスデータを削除しますか？\nこの操作は取り消せません。");
-      if (confirmClear) {
-        if (isGDriveConnected()) {
-          showToast('Google ドライブから全削除中...');
-          setIsGDriveWriting(true);
-          try {
-            const index = await getGDriveIndex();
-            for (const meta of index) {
-              if (meta.gdriveFileId) {
-                await deleteDriveFile(meta.gdriveFileId);
-              }
-            }
-            await saveGDriveIndex([]);
-          } catch (err: any) {
-            showToast(`削除に失敗しました: ${err.message}`);
-          } finally {
-            setIsGDriveWriting(false);
-          }
-        }
-        clearAllCanvases();
-        renderStartScreen();
-      }
-    });
-  }
 
   let saves: CanvasMetadata[] = [];
   if (isGDriveConnected()) {
@@ -265,6 +234,8 @@ document.addEventListener('click', (e) => {
 });
 
 btnSave.addEventListener('click', async () => {
+  if (btnSave.disabled) return;
+  btnSave.disabled = true;
   let canvasId = currentCanvasId;
   setIsGDriveWriting(true);
   try {
@@ -336,6 +307,7 @@ btnSave.addEventListener('click', async () => {
     }
   } finally {
     setIsGDriveWriting(false);
+    btnSave.disabled = false;
   }
 });
 
@@ -430,6 +402,33 @@ initDrawingListeners();
 initLayerListeners();
 initInputListeners();
 initGDriveListeners();
+
+if (btnClearStorage) {
+  btnClearStorage.addEventListener('click', async () => {
+    const confirmClear = confirm("本当にすべてのキャンバスデータを削除しますか？\nこの操作は取り消せません。");
+    if (confirmClear) {
+      if (isGDriveConnected()) {
+        showToast('Google ドライブから全削除中...');
+        setIsGDriveWriting(true);
+        try {
+          const index = await getGDriveIndex();
+          for (const meta of index) {
+            if (meta.gdriveFileId) {
+              await deleteDriveFile(meta.gdriveFileId);
+            }
+          }
+          await saveGDriveIndex([]);
+        } catch (err: any) {
+          showToast(`削除に失敗しました: ${err.message}`);
+        } finally {
+          setIsGDriveWriting(false);
+        }
+      }
+      clearAllCanvases();
+      await renderStartScreen();
+    }
+  });
+}
 
 // Initial render
 renderStartScreen();

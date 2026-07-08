@@ -67,6 +67,9 @@ app.innerHTML = `
           <button id="btn-validate-files" class="start-button secondary" style="height: 32px; font-size: 12px; width: 100%;">
             整合性をチェック & 修復
           </button>
+          <button id="btn-clear-storage" class="start-button secondary" style="height: 32px; font-size: 12px; width: 100%; margin-top: 8px; color: var(--destructive); border-color: var(--destructive); display: inline-flex; align-items: center; justify-content: center; gap: 4px;">
+            <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i> すべてのデータを削除 (Clear All)
+          </button>
         </div>
       </div>
     </div>
@@ -192,3 +195,4 @@ export const layerPanelEl = document.getElementById('layer-panel') as HTMLDivEle
 export const undoToastEl = document.getElementById('undo-toast') as HTMLDivElement;
 export const btnBackToStart = document.getElementById('btn-back-to-start') as HTMLButtonElement;
 export const btnValidateFiles = document.getElementById('btn-validate-files') as HTMLButtonElement;
+export const btnClearStorage = document.getElementById('btn-clear-storage') as HTMLButtonElement;
