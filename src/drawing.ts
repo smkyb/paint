@@ -51,12 +51,13 @@ export function shiftCurrentColor() {
     const color = new Color(currentColor);
     const oklch = color.to('oklch');
     let l = oklch.coords[0] ?? 0;
+    const originalC = oklch.coords[1] ?? 0;
     let h = oklch.coords[2] ?? 0;
 
     // L -= 0.10
     l = Math.max(0, l - 0.10);
 
-    // H += 25 (30と264のうち近い向きへ移動)
+    // H の移動
     h = (h % 360 + 360) % 360;
     
     const dist30 = (30 - h + 360) % 360;
@@ -65,17 +66,27 @@ export function shiftCurrentColor() {
     const dist264 = (264 - h + 360) % 360;
     const absDist264 = dist264 <= 180 ? dist264 : 360 - dist264;
 
-    let hDirection = 1; // 1: +25, -1: -25
-    if (absDist30 < absDist264) {
-      hDirection = dist30 <= 180 ? 1 : -1;
+    let newH = h;
+    if (absDist30 <= 25 || absDist264 <= 25) {
+      // 30または264までの距離が25以下なら30または264にする
+      if (absDist30 < absDist264) {
+        newH = 30;
+      } else {
+        newH = 264;
+      }
     } else {
-      hDirection = dist264 <= 180 ? 1 : -1;
+      // どちらも25より大きい場合は、近い目標に向かって25移動する
+      let hDirection = 1; // 1: +25, -1: -25
+      if (absDist30 < absDist264) {
+        hDirection = dist30 <= 180 ? 1 : -1;
+      } else {
+        hDirection = dist264 <= 180 ? 1 : -1;
+      }
+      newH = (h + hDirection * 25) % 360;
+      if (newH < 0) newH += 360;
     }
 
-    let newH = (h + hDirection * 25) % 360;
-    if (newH < 0) newH += 360;
-
-    // CはLとHが定まった中で取りうる最大値
+    // CはLとHが定まった中で取りうる最大値 (上限はもともとの色+=0.05)
     let low = 0;
     let high = 0.4;
     let fitC = 0;
@@ -89,7 +100,7 @@ export function shiftCurrentColor() {
         high = mid;
       }
     }
-    const c = fitC;
+    const c = Math.min(fitC, originalC + 0.05);
 
     const newColor = new Color('oklch', [l, c, newH]);
     updateColorDisplay(newColor);
