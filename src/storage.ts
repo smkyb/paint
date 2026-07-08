@@ -15,6 +15,7 @@ export interface SaveData {
   activeLayerId: number;
   nextLayerId: number;
   layers: LayerData[];
+  thumbnail?: string;
 }
 
 export interface CanvasMetadata {
@@ -66,10 +67,12 @@ export function getSavedCanvasesMetadata(): CanvasMetadata[] {
         const item = localStorage.getItem(key);
         if (item) {
           const parsed = JSON.parse(item) as SaveData;
-          // Extract a small thumbnail if possible (e.g. layer 0 data)
+          // Extract a small thumbnail if possible
           let thumbnail = undefined;
-          if (parsed.layers && parsed.layers.length > 0 && parsed.layers[0].data) {
-             thumbnail = parsed.layers[0].data; // use background as basic thumbnail
+          if (parsed.thumbnail) {
+            thumbnail = parsed.thumbnail;
+          } else if (parsed.layers && parsed.layers.length > 0 && parsed.layers[0].data) {
+             thumbnail = parsed.layers[0].data; // use background as basic thumbnail fallback
           }
 
           metadataList.push({
