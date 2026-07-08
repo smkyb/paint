@@ -131,6 +131,10 @@ async function renderStartScreen() {
 
   let saves: CanvasMetadata[] = [];
   if (isGDriveConnected()) {
+    savedCanvasesListEl.innerHTML = '<p style="text-align: center; color: var(--muted-foreground); font-size: 14px; margin-top: 24px;"><i data-lucide="loader-2" class="spinner" style="width: 18px; height: 18px; display: inline-block; vertical-align: middle; margin-right: 6px;"></i> Google ドライブから読み込み中...</p>';
+    if ((window as any).lucide) {
+      (window as any).lucide.createIcons({ root: savedCanvasesListEl });
+    }
     saves = await getGDriveIndex();
     saves.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   } else {
